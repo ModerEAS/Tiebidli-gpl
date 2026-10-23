@@ -101,3 +101,7 @@ cargo test
 - 日期归档用站点时区的 `[开始, 次日)`，和 Typecho 含当天 23:59:59 的写法差一秒
 
 更细的请求路径见 `docs/architecture.md`，字段见 `docs/typecho-1.2-schema.md`。
+
+## 许可证
+
+GPL-2.0，与 Typecho 1.2.1 相同。全文见根目录 `LICENSE`。
