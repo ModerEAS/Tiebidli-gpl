@@ -213,34 +213,25 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
         .await;
     assert!(probe.is_ok());
 
+    let log_count = || async {
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM "typecho_access_log""#)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap()
+    };
+    assert_eq!(log_count().await, 0);
+
+    // 默认后端模式（writeType=0）：track.gif 只回像素、不写库，对齐 PHP `Action::writeLogs`。
     let (status, _, bytes, headers) = get(&app, "/access/log/track.gif?u=/archives/1/&cid=1&mid=0&rand=123").await;
     assert_eq!(status, StatusCode::OK);
     assert!(headers.get("content-type").unwrap().to_str().unwrap().contains("gif"));
     assert!(bytes.starts_with(b"GIF89a"), "{bytes:?}");
-    let n: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "typecho_access_log""#)
-        .fetch_one(&db.pool)
-        .await
-        .unwrap();
-    assert_eq!(n, 1);
-    let cid: Option<i64> = sqlx::query_scalar(r#"SELECT content_id FROM "typecho_access_log" LIMIT 1"#)
-        .fetch_one(&db.pool)
-        .await
-        .unwrap();
-    assert_eq!(cid, Some(1));
+    assert_eq!(log_count().await, 0);
 
     // 后端写入模式默认不注入前端脚本。
     let (status, home, _, _) = get(&app, "/").await;
     assert_eq!(status, StatusCode::OK);
     assert!(!home.contains("window.Access.track"), "{home}");
-
-    // 切到前端写入后页脚注入打点。
-    let (path, referer) = sign_action(&db, "/action/plugins-edit?config=Access").await;
-    let (status, _, _) = post_form(&app, &path, "pageSize=10&isDrop=1&writeType=1&canAnalytize=1", &cookie, referer).await;
-    assert_eq!(status, StatusCode::FOUND);
-    let (status, home, _, _) = get(&app, "/").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(home.contains("window.Access.track"), "{home}");
-    assert!(home.contains("/access/log/track.gif"), "{home}");
 
     // 浏览数：首次 +1，带 cookie 重复访问不再加。
     let (status, single, _, headers) = get(&app, "/archives/1/").await;
@@ -256,13 +247,56 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
         .map(|v| v.split(';').next().unwrap_or(v).to_string())
         .collect::<Vec<_>>()
         .join("; ");
+    // 后端模式下匿名文章页访问记一行日志（对齐 `Plugin::backend`）。
+    assert_eq!(log_count().await, 1);
+
+    // 管理员访问不记日志（对齐 PHP `writeLogs` 开头的 `isAdmin` return），浏览数照常按 cookie 去重。
+    let (status, _, _, _) = call(
+        &app,
+        Request::builder().uri("/archives/1/").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(log_count().await, 1);
+    assert_eq!(tiebidli::access::get_views(&db, 1).await, 2);
+
+    // 切到前端写入后页脚注入打点。
+    let (path, referer) = sign_action(&db, "/action/plugins-edit?config=Access").await;
+    let (status, _, _) = post_form(&app, &path, "pageSize=10&isDrop=1&writeType=1&canAnalytize=1", &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    let (status, home, _, _) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(home.contains("window.Access.track"), "{home}");
+    assert!(home.contains("/access/log/track.gif"), "{home}");
+
+    // 前端模式下 track.gif 写库。
+    let (status, _, _, _) = get(&app, "/access/log/track.gif?u=/archives/1/&cid=1&mid=0&rand=456").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(log_count().await, 2);
+    let cid: Option<i64> = sqlx::query_scalar(r#"SELECT content_id FROM "typecho_access_log" WHERE content_id = 1 LIMIT 1"#)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(cid, Some(1));
+
+    // 管理员打点也不记。
+    let (status, _, _, _) = call(
+        &app,
+        Request::builder().uri("/access/log/track.gif?u=/archives/1/&cid=1&mid=0&rand=789").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(log_count().await, 2);
+
+    // 前端模式 + 去重 cookie：重访文章页既不加浏览数也不记日志。
     let (status, _, _, _) = call(
         &app,
         Request::builder().uri("/archives/1/").header("cookie", &views_cookie).body(Body::empty()).unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(tiebidli::access::get_views(&db, 1).await, 1);
+    assert_eq!(tiebidli::access::get_views(&db, 1).await, 2);
+    assert_eq!(log_count().await, 2);
 
     // 精简控制台可见日志与 PV。
     let (path, referer) = sign_action(&db, "/admin/access-console.php").await;

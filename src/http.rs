@@ -151,7 +151,7 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
             .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败")));
     }
     if path == "/access/log/track.gif" {
-        return track_gif(state, &site, &parts.method, &query, &parts.headers, &request_path, now).await;
+        return track_gif(state, &site, &parts.method, &query, &parts.headers, &cookies, &request_path, now).await;
     }
     if path == "/action/xmlrpc" {
         return crate::xmlrpc::handle(
@@ -208,6 +208,8 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     let viewer_label = viewer.as_ref().map(|user| user.label());
     let viewer_uid = viewer.as_ref().map(|user| user.uid).unwrap_or(0);
     let viewer_auth = viewer.as_ref().map(|user| user.auth_code.clone()).unwrap_or_default();
+    // 对齐 PHP `Access_Core::isAdmin`：管理员访问不记日志（浏览数照常按 cookie 去重）。
+    let viewer_is_admin = viewer.as_ref().is_some_and(|user| user.pass("administrator"));
     let page_url = absolute_url(&parts.headers, &request_path, &site);
     let ctx = ReqCtx {
         state,
@@ -226,6 +228,7 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
         viewer_name: viewer_label.as_deref(),
         viewer_uid,
         viewer_auth: &viewer_auth,
+        viewer_is_admin,
         page_url: &page_url,
     };
     match walk(&ctx, &path).await? {
@@ -257,6 +260,7 @@ struct ReqCtx<'a> {
     viewer_name: Option<&'a str>,
     viewer_uid: i64,
     viewer_auth: &'a str,
+    viewer_is_admin: bool,
     page_url: &'a str,
 }
 
@@ -1080,7 +1084,8 @@ async fn show_single(
         if crate::plugins::is_active(ctx.site, "Access") {
             let write_type =
                 crate::plugins::plugin_setting(ctx.site, "Access", "writeType", "0");
-            if write_type.trim() != "1" {
+            // 后端模式才在这里写库；管理员跳过，对齐 PHP `writeLogs` 开头的 `isAdmin` return。
+            if write_type.trim() != "1" && !ctx.viewer_is_admin {
                 let ua = ctx
                     .headers
                     .get(header::USER_AGENT)
@@ -1108,47 +1113,61 @@ async fn show_single(
     Ok(Step::Done(html_response(ctx, status, html, &headers)))
 }
 
-/// `GET /access/log/track.gif`：启用门控，记录后返回 1x1 GIF。
+/// `GET /access/log/track.gif`：启用门控，始终回 1x1 GIF。
 /// query 对齐参考：`u` 受访地址、`cid` 内容 id、`mid` 分类 id、`rand` 随机数（仅防缓存）。
+/// 入库语义对齐 PHP `Action::writeLogs`：仅前端写入模式（`writeType=1`）且非管理员才写库；
+/// 后端模式（默认）只回像素，写库在文章/页面渲染路径（`Plugin::backend` 对应处）。
 async fn track_gif(
     state: &AppState,
     site: &crate::model::Site,
     method: &Method,
     query: &HashMap<String, String>,
     headers: &HeaderMap,
+    cookies: &HashMap<String, String>,
     request_path: &str,
     now: i64,
 ) -> anyhow::Result<Response> {
     if *method != Method::GET || !crate::plugins::is_active(site, "Access") {
         return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
     }
-    // 表可能被外部删掉（如 isDrop=0 后又手动启用），best-effort 补上，保证打点不 500。
-    let _ = crate::access::ensure_table(&state.db).await;
-    let url = query
-        .get("u")
-        .map(String::as_str)
-        .unwrap_or(request_path);
-    let cid = query.get("cid").and_then(|s| s.parse::<i64>().ok());
-    let mid = query.get("mid").and_then(|s| s.parse::<i64>().ok());
-    let ua = headers
-        .get(header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let referer = headers
-        .get(header::REFERER)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let _ = crate::access::log_visit(
-        &state.db,
-        ua,
-        url,
-        &client_ip(headers),
-        referer,
-        now,
-        cid,
-        mid,
-    )
-    .await;
+    let write_type = crate::plugins::plugin_setting(site, "Access", "writeType", "0");
+    if write_type.trim() == "1" {
+        // 表可能被外部删掉（如 isDrop=0 后又手动启用），best-effort 补上，保证打点不 500。
+        let _ = crate::access::ensure_table(&state.db).await;
+        let root = auth::site_root(
+            &state.cfg.site_url,
+            &links::site_base(&state.cfg.site_url, site),
+        );
+        let is_admin = auth::session_user(&state.db, &root, cookies)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|user| user.pass("administrator"));
+        if !is_admin {
+            let url = query.get("u").map(String::as_str).unwrap_or(request_path);
+            let cid = query.get("cid").and_then(|s| s.parse::<i64>().ok());
+            let mid = query.get("mid").and_then(|s| s.parse::<i64>().ok());
+            let ua = headers
+                .get(header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            let referer = headers
+                .get(header::REFERER)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            let _ = crate::access::log_visit(
+                &state.db,
+                ua,
+                url,
+                &client_ip(headers),
+                referer,
+                now,
+                cid,
+                mid,
+            )
+            .await;
+        }
+    }
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/gif")
