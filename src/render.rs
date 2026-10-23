@@ -194,6 +194,7 @@ pub fn render_single(
     ctx["categories"] = json!(meta_links(site, &post.categories));
     ctx["tags"] = json!(tag_links(site, post));
     ctx["comment_total"] = json!(post.comments_num);
+    ctx["views"] = json!(post.views.max(0));
     ctx["respond_id"] = json!(format!(
         "respond-{}-{}",
         if post.kind == "page" { "page" } else { "post" },

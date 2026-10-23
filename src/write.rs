@@ -1463,6 +1463,7 @@ fn map_post_row(row: &sqlx::any::AnyRow) -> Result<Post, sqlx::Error> {
         categories: Vec::new(),
         tags: Vec::new(),
         fields: HashMap::new(),
+        views: 0,
     })
 }
 

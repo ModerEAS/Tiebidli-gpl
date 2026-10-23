@@ -124,6 +124,35 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     let path = normalize_path(&request_path);
     let now = chrono::Utc::now().timestamp();
     let site = state.db.load_site(now).await?;
+    // 内置插件公开路由（启用门控：未启用则 404，继续走正常调度）。
+    if path == "/usr/plugins/Sitemap/sitemap.xsl" {
+        if !crate::plugins::is_active(&site, "Sitemap") {
+            return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
+        }
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "text/xsl; charset=utf-8")
+            .body(Body::from(crate::sitemap::XSL_BODY))
+            .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败")));
+    }
+    if path == "/sitemap.xml" {
+        if !crate::plugins::is_active(&site, "Sitemap") {
+            return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
+        }
+        let (pages, posts) = crate::sitemap::entries(&state.db, now)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let base = links::site_base(&state.cfg.site_url, &site);
+        let xml = crate::sitemap::render(&site, &base, &pages, &posts);
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/xml; charset=utf-8")
+            .body(Body::from(xml))
+            .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败")));
+    }
+    if path == "/access/log/track.gif" {
+        return track_gif(state, &site, &parts.method, &query, &parts.headers, &request_path, now).await;
+    }
     if path == "/action/xmlrpc" {
         return crate::xmlrpc::handle(
             &state.db,
@@ -1000,7 +1029,7 @@ async fn show_single(
     } else {
         (None, None)
     };
-    let chrome = chrome(ctx, cookies);
+    let chrome = chrome(ctx, cookies.clone());
     let reply_to = ctx
         .query
         .get("replyTo")
@@ -1029,7 +1058,103 @@ async fn show_single(
     } else {
         StatusCode::OK
     });
+    // 浏览数：与主题 `get_post_view` 一致，仅单页 GET、未上锁时按 cookie 去重递增。
+    // 后端写入模式（writeType=0）同时记一条访问日志，前端模式靠 track.gif。
+    if !locked
+        && *ctx.method == Method::GET
+        && matches!(post.kind.as_str(), "post" | "page")
+    {
+        let root = root_of(ctx);
+        let cookie_name = crate::auth::cookie_name(&root, crate::access::VIEWS_COOKIE);
+        let seen = cookies
+            .get(&cookie_name)
+            .map(String::as_str)
+            .unwrap_or("");
+        if !crate::access::already_viewed(seen, post.cid) {
+            if let Ok(n) = crate::access::increment_views(&ctx.state.db, post.cid).await {
+                let _ = n;
+            }
+            let next = crate::access::mark_viewed(seen, post.cid);
+            push_cookie(&mut headers, &cookie_name, &next, None);
+        }
+        if crate::plugins::is_active(ctx.site, "Access") {
+            let write_type =
+                crate::plugins::plugin_setting(ctx.site, "Access", "writeType", "0");
+            if write_type.trim() != "1" {
+                let ua = ctx
+                    .headers
+                    .get(header::USER_AGENT)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                let referer = ctx
+                    .headers
+                    .get(header::REFERER)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                let _ = crate::access::log_visit(
+                    &ctx.state.db,
+                    ua,
+                    ctx.page_url,
+                    &client_ip(ctx.headers),
+                    referer,
+                    ctx.now,
+                    Some(post.cid),
+                    None,
+                )
+                .await;
+            }
+        }
+    }
     Ok(Step::Done(html_response(ctx, status, html, &headers)))
+}
+
+/// `GET /access/log/track.gif`：启用门控，记录后返回 1x1 GIF。
+/// query 对齐参考：`u` 受访地址、`cid` 内容 id、`mid` 分类 id、`rand` 随机数（仅防缓存）。
+async fn track_gif(
+    state: &AppState,
+    site: &crate::model::Site,
+    method: &Method,
+    query: &HashMap<String, String>,
+    headers: &HeaderMap,
+    request_path: &str,
+    now: i64,
+) -> anyhow::Result<Response> {
+    if *method != Method::GET || !crate::plugins::is_active(site, "Access") {
+        return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
+    }
+    // 表可能被外部删掉（如 isDrop=0 后又手动启用），best-effort 补上，保证打点不 500。
+    let _ = crate::access::ensure_table(&state.db).await;
+    let url = query
+        .get("u")
+        .map(String::as_str)
+        .unwrap_or(request_path);
+    let cid = query.get("cid").and_then(|s| s.parse::<i64>().ok());
+    let mid = query.get("mid").and_then(|s| s.parse::<i64>().ok());
+    let ua = headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let referer = headers
+        .get(header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let _ = crate::access::log_visit(
+        &state.db,
+        ua,
+        url,
+        &client_ip(headers),
+        referer,
+        now,
+        cid,
+        mid,
+    )
+    .await;
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "image/gif")
+        .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+        .body(Body::from(crate::access::TRACK_GIF))
+        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败")))
 }
 
 async fn feed_like(ctx: &ReqCtx<'_>, params: &HashMap<String, String>) -> anyhow::Result<Step> {

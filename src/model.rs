@@ -35,6 +35,7 @@ pub struct Post {
     pub status: String,
     pub password: String,
     pub comments_num: i64,
+    pub views: i64,
     pub allow_comment: bool,
     pub allow_ping: bool,
     pub allow_feed: bool,

@@ -67,6 +67,12 @@ pub trait Plugin: Send + Sync {
 
 struct HelloWorld;
 
+struct Sitemap;
+
+struct Access;
+
+struct Links;
+
 impl Plugin for HelloWorld {
     fn name(&self) -> &'static str {
         "HelloWorld"
@@ -115,8 +121,143 @@ impl Plugin for HelloWorld {
     }
 }
 
+impl Plugin for Sitemap {
+    fn name(&self) -> &'static str {
+        "Sitemap"
+    }
+    fn title(&self) -> &'static str {
+        "Sitemap"
+    }
+    fn description(&self) -> &'static str {
+        "生成 sitemap.xml，输出已发布的文章与独立页面"
+    }
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+    fn author(&self) -> &'static str {
+        "Tiebidli"
+    }
+    fn homepage(&self) -> &'static str {
+        ""
+    }
+    fn config_fields(&self) -> &'static [Field] {
+        &[]
+    }
+    fn bindings(&self) -> &'static [Binding] {
+        &[]
+    }
+    fn snippet(&self, _point: Point, _site: &Site) -> String {
+        String::new()
+    }
+}
+
+impl Plugin for Access {
+    fn name(&self) -> &'static str {
+        "Access"
+    }
+    fn title(&self) -> &'static str {
+        "Access"
+    }
+    fn description(&self) -> &'static str {
+        "访问统计：记录访问日志，文章浏览数写入 contents.views"
+    }
+    fn version(&self) -> &'static str {
+        "2.0.2"
+    }
+    fn author(&self) -> &'static str {
+        "Tiebidli"
+    }
+    fn homepage(&self) -> &'static str {
+        ""
+    }
+    fn config_fields(&self) -> &'static [Field] {
+        &[
+            Field {
+                name: "pageSize",
+                label: "分页数量",
+                description: "控制台每页显示的日志数量",
+                default_value: "10",
+            },
+            Field {
+                name: "isDrop",
+                label: "删除数据表",
+                description: "禁用插件时是否删除日志表：0 删除，1 保留",
+                default_value: "1",
+            },
+            Field {
+                name: "writeType",
+                label: "日志写入类型",
+                description: "0 后端写入，1 前端打点写入",
+                default_value: "0",
+            },
+            Field {
+                name: "canAnalytize",
+                label: "允许统计使用情况",
+                description: "0 不允许，1 允许",
+                default_value: "1",
+            },
+        ]
+    }
+    fn bindings(&self) -> &'static [Binding] {
+        &[Binding {
+            point: Point::PublicFooter,
+            php_handle: Some("Widget_Archive:footer"),
+            php_callback: Some(r"TypechoPlugin\Access\Plugin::frontend"),
+        }]
+    }
+    fn snippet(&self, point: Point, site: &Site) -> String {
+        match point {
+            Point::PublicFooter => {
+                let write_type = setting(site, self.name(), "writeType", "0");
+                crate::access::frontend_snippet(site, write_type.trim())
+            }
+            _ => String::new(),
+        }
+    }
+}
+
+impl Plugin for Links {
+    fn name(&self) -> &'static str {
+        "Links"
+    }
+    fn title(&self) -> &'static str {
+        "友情链接"
+    }
+    fn description(&self) -> &'static str {
+        "管理友情链接，按分组输出供模板侧栏使用"
+    }
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+    fn author(&self) -> &'static str {
+        "Tiebidli"
+    }
+    fn homepage(&self) -> &'static str {
+        ""
+    }
+    fn config_fields(&self) -> &'static [Field] {
+        &[]
+    }
+    fn bindings(&self) -> &'static [Binding] {
+        &[]
+    }
+    fn snippet(&self, _point: Point, _site: &Site) -> String {
+        String::new()
+    }
+}
+
 pub fn builtin_plugins() -> &'static [&'static dyn Plugin] {
-    &[&HelloWorld]
+    &[&HelloWorld, &Sitemap, &Access, &Links]
+}
+
+/// 公开路由/后台入口的激活门控：未启用则当不存在（404）。
+pub fn is_active(site: &Site, name: &str) -> bool {
+    is_activated(site, name)
+}
+
+/// 读 `plugin:{Name}` 里的单个配置，缺省回默认值。
+pub fn plugin_setting(site: &Site, plugin: &str, field: &str, default_value: &str) -> String {
+    setting(site, plugin, field, default_value)
 }
 
 pub fn manage_page(site: &Site) -> String {
@@ -266,6 +407,23 @@ pub async fn activate(db: &Db, site: &Site, name: &str) -> Result<&'static str, 
             .await
             .map_err(|_| "无法启用插件")?;
     }
+    // 插件自带的数据表与列：失败即视为启用失败，不臆造成功。
+    match name {
+        "Access" => {
+            crate::access::ensure_table(db)
+                .await
+                .map_err(|_| "无法启用插件")?;
+            crate::access::ensure_views_column(db)
+                .await
+                .map_err(|_| "无法启用插件")?;
+        }
+        "Links" => {
+            crate::friend_links::ensure_table(db)
+                .await
+                .map_err(|_| "无法启用插件")?;
+        }
+        _ => {}
+    }
     Ok("插件已经被启用")
 }
 
@@ -286,11 +444,18 @@ pub async fn deactivate(db: &Db, site: &Site, name: &str) -> Result<&'static str
     }
     set_child(&mut root, "activated", PhpValue::Array(activated));
     set_child(&mut root, "handles", PhpValue::Array(handles));
+    // `isDrop=0` 表示禁用时删日志表，需在配置被删前先读出来。
+    let drop_logs = name == "Access"
+        && setting(site, "Access", "isDrop", "1").trim() == "0";
     db.set_option("plugins", &phpval::serialize(&PhpValue::Array(root)))
         .await
         .map_err(|_| "无法禁用插件")?;
     let _ = db.delete_option_all(&option_name(name)).await;
     let _ = db.delete_option_all(&personal_option_name(name)).await;
+    if drop_logs {
+        let sql = format!("DROP TABLE IF EXISTS {}", db.table("access_log"));
+        let _ = sqlx::query(&sql).execute(&db.pool).await;
+    }
     Ok("插件已经被禁用")
 }
 
@@ -649,7 +814,10 @@ mod tests {
         let page = manage_page(&on);
         assert!(page.contains("启用的插件"), "{page}");
         assert!(page.contains("禁用"), "{page}");
-        assert!(!page.contains(">启用</a>"), "{page}");
+        // HelloWorld 已启用（行内是“禁用”），其余内置插件仍在禁用表里带“启用”。
+        assert!(page.contains("plugin-HelloWorld"), "{page}");
+        assert!(page.contains(">启用</a>"), "{page}");
+        assert!(page.contains("禁用的插件"), "{page}");
     }
 
     #[test]
