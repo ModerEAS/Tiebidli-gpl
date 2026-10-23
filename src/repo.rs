@@ -642,6 +642,24 @@ impl Db {
                 post.fields.insert(name, fv);
             }
         }
+        // `contents.views` 列是 Access 插件补的；老库缺列时保持 0，不让列表失败。
+        let views_sql = format!(
+            "SELECT cid, views FROM {} WHERE cid IN ({marks})",
+            self.table("contents")
+        );
+        let mut q = sqlx::query(&views_sql);
+        for id in &ids {
+            q = q.bind(*id);
+        }
+        if let Ok(views_rows) = q.fetch_all(&self.pool).await {
+            for row in &views_rows {
+                let cid = col_i64(row, "cid").unwrap_or(0);
+                let views = col_i64(row, "views").unwrap_or(0).max(0);
+                if let Some(post) = posts.iter_mut().find(|p| p.cid == cid) {
+                    post.views = views;
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -735,6 +753,8 @@ fn map_post(row: &sqlx::any::AnyRow) -> Result<Post, sqlx::Error> {
         categories: Vec::new(),
         tags: Vec::new(),
         fields: HashMap::new(),
+        // 主查询不 SELECT views（老库缺列会整句失败），attach 里 best-effort 回填。
+        views: 0,
     })
 }
 

@@ -63,6 +63,8 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/admin/options-permalink.php", get(settings_permalink))
         .route("/admin/plugins.php", get(plugins_page))
         .route("/admin/options-plugin.php", get(options_plugin_page))
+        .route("/admin/links.php", get(links_page))
+        .route("/admin/access-console.php", get(access_console))
         .route("/admin/themes.php", get(themes_page))
         .route("/admin/options-theme.php", get(options_theme_page))
         .route("/admin/theme-editor.php", get(theme_editor_page))
@@ -268,6 +270,550 @@ async fn plugins_edit_action(
         };
     }
     redirect("/admin/plugins.php")
+}
+
+/// 友情链接管理页（Links 插件入口，通用命名，不含主题品牌）。
+async fn links_page(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
+    let Ok((site, user, _)) = need(&state, &headers, "administrator").await else {
+        return redirect_login();
+    };
+    if !plugins::is_active(&site, "Links") {
+        return error_to("/admin/plugins.php", "请先启用 Links 插件");
+    }
+    let _ = crate::friend_links::ensure_table(&state.db).await;
+    let links = crate::friend_links::list(&state.db).await.unwrap_or_default();
+    let edit_lid = q.get("lid").and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
+    let editing = if edit_lid > 0 {
+        links.iter().find(|l| l.lid == edit_lid).cloned()
+    } else {
+        None
+    };
+    let mut rows = String::new();
+    if links.is_empty() {
+        rows.push_str("<tr><td colspan=\"5\"><h6 class=\"typecho-list-table-title\">没有任何链接</h6></td></tr>");
+    }
+    for link in &links {
+        rows.push_str(&format!(
+            r#"<tr id="link-{lid}" draggable="true"><td><input type="checkbox" value="{lid}" name="lid[]"></td>
+<td><a href="/admin/links.php?lid={lid}" title="点击编辑">{name}</a></td>
+<td>{url}</td><td>{sort}</td>
+<td>{image}</td></tr>"#,
+            lid = link.lid,
+            name = html_escape(&link.name),
+            url = html_escape(&link.url),
+            sort = html_escape(crate::friend_links::sort_label(&link.sort)),
+            image = if link.image.is_empty() {
+                "无".to_string()
+            } else {
+                format!(
+                    "<a href=\"{u}\" target=\"_blank\">查看</a>",
+                    u = html_escape(&link.image)
+                )
+            },
+        ));
+    }
+    let (form_do, form_lid, form_name, form_url, form_sort, form_image, form_desc, submit) =
+        match editing {
+            Some(l) => (
+                "update",
+                l.lid.to_string(),
+                html_escape(&l.name),
+                html_escape(&l.url),
+                l.sort.clone(),
+                html_escape(&l.image),
+                html_escape(&l.description),
+                "编辑链接",
+            ),
+            None => (
+                "insert",
+                String::new(),
+                String::new(),
+                "http://".to_string(),
+                "ten".to_string(),
+                String::new(),
+                String::new(),
+                "增加链接",
+            ),
+        };
+    let mut sort_opts = String::new();
+    for (value, label) in crate::friend_links::SORTS {
+        let sel = if *value == form_sort { " selected" } else { "" };
+        sort_opts.push_str(&format!(
+            "<option value=\"{value}\"{sel}>{label}</option>"
+        ));
+    }
+    let lid_input = if form_lid.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<input type=\"hidden\" name=\"lid\" value=\"{form_lid}\">"
+        )
+    };
+    let mut main = format!(
+        r#"<div class="row typecho-page-main manage-metas" role="main">
+<div class="col-mb-12">{flash}</div>
+<div class="col-mb-12 col-tb-8" role="main">
+<form method="post" name="manage_links" class="operate-form" action="/action/links-edit">
+<div class="typecho-list-operate clearfix"><div class="operate">
+<label><i class="sr-only">全选</i><input type="checkbox" class="typecho-table-select-all"></label>
+<div class="btn-group btn-drop"><button class="btn dropdown-toggle btn-s" type="button">选中项 <i class="i-caret-down"></i></button>
+<ul class="dropdown-menu"><li><a lang="你确认要删除这些链接吗?" href="/action/links-edit?do=delete">删除</a></li></ul></div>
+<button class="btn btn-s" type="button" id="save-sort">保存排序</button>
+</div></div>
+<div class="typecho-table-wrap"><table class="typecho-list-table" id="links-table">
+<colgroup><col width="20"><col width="25%"><col width=""><col width="15%"><col width="10%"></colgroup>
+<thead><tr><th> </th><th>链接名称</th><th>链接地址</th><th>分类</th><th>图片</th></tr></thead>
+<tbody>{rows}</tbody></table></div></form>
+<p class="description">拖动行可调整顺序，松开后点“保存排序”即 POST 到 /action/links-edit?do=sort。</p>
+</div>
+<div class="col-mb-12 col-tb-4" role="form">
+<form method="post" action="/action/links-edit">
+<ul class="typecho-option">
+<li><label class="typecho-label" for="name">链接名称*</label><input id="name" name="name" type="text" class="text w-100" value="{form_name}"></li>
+<li><label class="typecho-label" for="url">链接地址*</label><input id="url" name="url" type="text" class="text w-100" value="{form_url}"></li>
+<li><label class="typecho-label" for="sort">链接输出位置*</label><select id="sort" name="sort">{sort_opts}</select>
+<p class="description">全站链接在全站输出，内页/推荐链接在独立页面输出，失效链接不在任何位置输出</p></li>
+<li><label class="typecho-label" for="image">链接图片</label><input id="image" name="image" type="text" class="text w-100" value="{form_image}">
+<p class="description">需要以 http:// 开头，留空表示没有链接图片</p></li>
+<li><label class="typecho-label" for="description">链接描述</label><textarea id="description" name="description" class="text w-100">{form_desc}</textarea></li>
+</ul>
+<input type="hidden" name="do" value="{form_do}">{lid_input}
+<ul class="typecho-option"><li class="typecho-option-submit"><button type="submit" class="btn primary">{submit}</button></li></ul>
+</form>
+</div></div>"#,
+        flash = flash_html(&q),
+    );
+    main.push_str(LINKS_SORT_JS);
+    layout(&site, &user, "links", "友情链接", None, "container", &main)
+}
+
+/// Access 控制台：访问概览（今日/昨日/总计 PV·UV·IP、24 小时分布、来源、热门内容）
+/// 与访问日志（筛选、分页、批量删除）双 Tab，对齐参考 `page/console.php` 分区。
+/// 图表只用数字表格（不引入外网 JS），删除经 `/access/log/delete.json`，IP 查询经 `/access/ip.json`。
+async fn access_console(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
+    let Ok((site, user, _)) = need(&state, &headers, "administrator").await else {
+        return redirect_login();
+    };
+    if !plugins::is_active(&site, "Access") {
+        return error_to("/admin/plugins.php", "请先启用 Access 插件");
+    }
+    let _ = crate::access::ensure_table(&state.db).await;
+    let page_size = plugins::plugin_setting(&site, "Access", "pageSize", "10")
+        .parse::<i64>()
+        .unwrap_or(10)
+        .clamp(1, 100);
+    let action = q.get("action").map(String::as_str).unwrap_or("logs");
+    let tabs = format!(
+        r#"<div class="col-mb-12"><ul class="typecho-option-tabs fix-tabs clearfix"><li{class_logs}><a href="/admin/access-console.php?action=logs">访问日志</a></li><li{class_overview}><a href="/admin/access-console.php?action=overview">访问概览</a></li><li><a href="/admin/options-plugin.php?config=Access">插件设置</a></li></ul></div>"#,
+        class_logs = if action == "overview" { "" } else { " class=\"current\"" },
+        class_overview = if action == "overview" {
+            " class=\"current\""
+        } else {
+            ""
+        },
+    );
+    let body = if action == "overview" {
+        access_overview_html(&state, &site, page_size).await
+    } else {
+        access_logs_html(&state, &site, &q, page_size).await
+    };
+    let main = format!(
+        r#"<div class="row typecho-page-main" role="main"><div class="col-mb-12">{flash}</div>{tabs}{body}</div>"#,
+        flash = flash_html(&q),
+    );
+    layout(&site, &user, "access", "访问统计", None, "container", &main)
+}
+
+async fn access_overview_html(state: &AppState, site: &Site, page_size: i64) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let ov = crate::access::overview(&state.db, now, site.timezone()).await;
+    let (domains, urls) = crate::access::top_referers(&state.db, page_size).await;
+    let hot = crate::access::pv_by_content(&state.db).await.unwrap_or_default();
+    let mut domain_rows = String::new();
+    if domains.is_empty() {
+        domain_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
+    }
+    for (i, (value, n)) in domains.iter().enumerate() {
+        domain_rows.push_str(&format!(
+            "<tr><td>{}</td><td>{n}</td><td>{}</td></tr>",
+            i + 1,
+            html_escape(value),
+        ));
+    }
+    let mut url_rows = String::new();
+    if urls.is_empty() {
+        url_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
+    }
+    for (i, (value, n)) in urls.iter().enumerate() {
+        url_rows.push_str(&format!(
+            "<tr><td>{}</td><td>{n}</td><td>{}</td></tr>",
+            i + 1,
+            html_escape(value),
+        ));
+    }
+    let mut hot_rows = String::new();
+    if hot.is_empty() {
+        hot_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
+    }
+    for (cid, title, n) in &hot {
+        let label = if title.is_empty() {
+            format!("cid {cid}")
+        } else {
+            title.clone()
+        };
+        hot_rows.push_str(&format!(
+            "<tr><td>{cid}</td><td>{}</td><td>{n}</td></tr>",
+            html_escape(&label),
+        ));
+    }
+    let mut hour_rows = String::new();
+    for h in &ov.hours {
+        hour_rows.push_str(&format!(
+            "<tr><td>{}:00</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            h.hour, h.pv, h.uv, h.ip,
+        ));
+    }
+    format!(
+        r#"<div class="col-mb-12 typecho-list"><h4 class="typecho-list-table-title">访问数表格</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><colgroup><col width="10%"/><col width="30%"/><col width="25%"/><col width=""/></colgroup>
+<thead><tr><th> </th><th>浏览量(PV)</th><th>访客数(UV)</th><th>IP数</th></tr></thead><tbody>
+<tr><td>今日</td><td>{pv_t}</td><td>{uv_t}</td><td>{ip_t}</td></tr>
+<tr><td>昨日</td><td>{pv_y}</td><td>{uv_y}</td><td>{ip_y}</td></tr>
+<tr><td>总计</td><td>{pv_a}</td><td>{uv_a}</td><td>{ip_a}</td></tr>
+</tbody></table></div>
+<h4 class="typecho-list-table-title">来源域名</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><colgroup><col width="10%"/><col width="10%"/><col width="80%"/></colgroup>
+<thead><tr><th>排名</th><th>次数</th><th>来源域名</th></tr></thead><tbody>{domain_rows}</tbody></table></div>
+<h4 class="typecho-list-table-title">来源页</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><colgroup><col width="10%"/><col width="10%"/><col width="80%"/></colgroup>
+<thead><tr><th>排名</th><th>次数</th><th>来源URL</th></tr></thead><tbody>{url_rows}</tbody></table></div>
+<h4 class="typecho-list-table-title">热门内容</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><thead><tr><th>内容 id</th><th>标题</th><th>PV</th></tr></thead><tbody>{hot_rows}</tbody></table></div>
+<h4 class="typecho-list-table-title">今日图表（按小时，数字表）</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><thead><tr><th>小时</th><th>浏览量(PV)</th><th>访客数(UV)</th><th>IP数</th></tr></thead><tbody>{hour_rows}</tbody></table></div>
+</div>"#,
+        pv_t = ov.pv_today,
+        uv_t = ov.uv_today,
+        ip_t = ov.ip_today,
+        pv_y = ov.pv_yesterday,
+        uv_y = ov.uv_yesterday,
+        ip_y = ov.ip_yesterday,
+        pv_a = ov.pv_all,
+        uv_a = ov.uv_all,
+        ip_a = ov.ip_all,
+    )
+}
+
+async fn access_logs_html(
+    state: &AppState,
+    site: &Site,
+    q: &HashMap<String, String>,
+    page_size: i64,
+) -> String {
+    use crate::access::{LogFilter, LogKind};
+    let filter_name = q.get("filter").map(String::as_str).unwrap_or("all");
+    let kind = LogKind::from_param(q.get("type").map(String::as_str).unwrap_or("1"));
+    let filter = match filter_name {
+        "ip" => q
+            .get("ip")
+            .and_then(|s| s.trim().parse::<std::net::Ipv4Addr>().ok())
+            .map(|addr| LogFilter::Ip(u32::from(addr) as i64))
+            .unwrap_or(LogFilter::All),
+        "post" => q
+            .get("cid")
+            .and_then(|s| s.parse::<i64>().ok())
+            .filter(|cid| *cid > 0)
+            .map(LogFilter::Content)
+            .unwrap_or(LogFilter::All),
+        "path" => q
+            .get("path")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(LogFilter::Path)
+            .unwrap_or(LogFilter::All),
+        _ => LogFilter::All,
+    };
+    let page = q
+        .get("page")
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let total = crate::access::log_count_filtered(&state.db, &filter, kind)
+        .await
+        .unwrap_or(0);
+    let pages = ((total + page_size - 1) / page_size).max(1);
+    let page = page.min(pages);
+    let logs = crate::access::recent_logs_filtered(&state.db, &filter, kind, page_size, (page - 1) * page_size)
+        .await
+        .unwrap_or_default();
+    // 内页筛选下拉的数据源（按文章 PV 排行）。
+    let cid_list = crate::access::pv_by_content(&state.db).await.unwrap_or_default();
+    let mut cid_opts = String::new();
+    for (cid, title, n) in &cid_list {
+        let label = if title.is_empty() {
+            format!("cid {cid}")
+        } else {
+            title.clone()
+        };
+        let sel = if matches!(&filter, LogFilter::Content(id) if id == cid) {
+            " selected=\"true\""
+        } else {
+            ""
+        };
+        cid_opts.push_str(&format!(
+            "<option{sel} value=\"{cid}\">{label} ({n})</option>",
+            label = html_escape(&label),
+        ));
+    }
+    let opt = |value: &str, current: &str| {
+        if value == current {
+            " selected=\"true\""
+        } else {
+            ""
+        }
+    };
+    let type_num = q.get("type").map(String::as_str).unwrap_or("1");
+    let cancel = if filter_name == "all" {
+        String::new()
+    } else {
+        "<a href=\"/admin/access-console.php?action=logs\">&laquo; 取消筛选</a>".to_string()
+    };
+    let mut log_rows = String::new();
+    if logs.is_empty() {
+        log_rows.push_str("<tr><td colspan=\"6\"><h6 class=\"typecho-list-table-title\">当前无日志</h6></td></tr>");
+    }
+    for log in &logs {
+        log_rows.push_str(&format!(
+            "<tr><td><input type=\"checkbox\" value=\"{id}\" name=\"id[]\"></td><td>{url}</td><td>{ip} <a data-access-ip=\"{ip}\" href=\"#\">[ ? ]</a><span class=\"access-ip-result\"></span></td><td>{referer}</td><td>{cid}</td><td>{time}</td></tr>",
+            id = log.id,
+            url = html_escape(&log.url),
+            ip = html_escape(&log.ip),
+            referer = html_escape(&log.referer),
+            cid = log.content_id.map(|v| v.to_string()).unwrap_or_default(),
+            time = html_escape(&crate::text::format_php_date(
+                "Y-m-d H:i",
+                log.time,
+                site.timezone()
+            )),
+        ));
+    }
+    let pager = pager_html(page as usize, pages as usize, "/admin/access-console.php", q);
+    format!(
+        r#"<div class="col-mb-12 typecho-list"><div class="typecho-list-operate clearfix">
+<div class="operate"><label><i class="sr-only">全选</i><input type="checkbox" class="typecho-table-select-all"></label>
+<div class="btn-group btn-drop"><button class="btn dropdown-toggle btn-s" type="button"><i class="sr-only">操作</i>选中项 <i class="i-caret-down"></i></button>
+<ul class="dropdown-menu"><li><a data-action="delete" href="javascript:;">删除</a></li></ul></div></div>
+<form method="get" class="search-form" action="/admin/access-console.php"><div class="search" role="search">{cancel}
+<input type="hidden" name="action" value="logs">
+<select name="filter"><option{all} value="all">所有</option><option{ip} value="ip">按IP</option><option{post} value="post">按文章</option><option{path} value="path">按路由</option></select>
+<input type="text" class="text-s" placeholder="输入ip" value="{ip_val}" name="ip">
+<select name="cid">{cid_opts}</select>
+<input type="text" class="text-s" placeholder="输入路由" value="{path_val}" name="path">
+<select name="type"><option{t1} value="1">默认(仅人类)</option><option{t2} value="2">仅爬虫</option><option{t3} value="3">所有</option></select>
+<input type="hidden" name="page" value="1"><button type="submit" class="btn btn-s">筛选</button></div></form>
+</div>
+<form method="post" class="operate-form"><div class="typecho-table-wrap"><table class="typecho-list-table">
+<colgroup><col width="5"/><col width="20%"/><col width="18%"/><col width="20%"/><col width="10%"/><col width="15%"/></colgroup>
+<thead><tr><th> </th><th>受访地址</th><th>IP地址</th><th>Referer</th><th>内容</th><th>日期</th></tr></thead>
+<tbody>{log_rows}</tbody></table></div></form>
+<div class="typecho-list-operate clearfix">{pager}</div></div>{js}"#,
+        all = opt("all", filter_name),
+        ip = opt("ip", filter_name),
+        post = opt("post", filter_name),
+        path = opt("path", filter_name),
+        ip_val = html_escape(q.get("ip").map(String::as_str).unwrap_or("")),
+        path_val = html_escape(q.get("path").map(String::as_str).unwrap_or("")),
+        t1 = opt("1", type_num),
+        t2 = opt("2", type_num),
+        t3 = opt("3", type_num),
+        js = ACCESS_CONSOLE_JS,
+    )
+}
+
+const ACCESS_CONSOLE_JS: &str = r##"<script>(function(){
+var del=document.querySelector('a[data-action="delete"]');
+if(del)del.addEventListener('click',function(e){
+e.preventDefault();
+var ids=Array.from(document.querySelectorAll('form.operate-form tbody input[type=checkbox]:checked')).map(function(c){return parseInt(c.value,10)}).filter(function(n){return n>0});
+if(!ids.length)return;
+if(!window.confirm('你确认要删除这些日志吗?'))return;
+fetch('/access/log/delete.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ids)}).then(function(r){return r.json()}).then(function(j){if(j&&j.code===0)location.reload();else alert((j&&j.data)||'删除失败')});
+});
+document.querySelectorAll('a[data-access-ip]').forEach(function(a){
+a.addEventListener('click',function(e){
+e.preventDefault();
+var box=a.parentNode.querySelector('.access-ip-result');
+fetch('/access/ip.json?ip='+encodeURIComponent(a.getAttribute('data-access-ip'))).then(function(r){return r.json()}).then(function(j){
+var t=(j&&j.code===0)?j.data:('查询失败：'+((j&&j.data)||''));
+if(box)box.textContent=' '+t;else alert(t);
+});
+});
+});
+})();</script>"##;
+/// 兼容 `/action/links-edit`：`do=insert/update/delete/sort`。
+async fn links_edit_action(
+    state: Arc<AppState>,
+    headers: &HeaderMap,
+    q: &HashMap<String, String>,
+    body: &str,
+) -> Response {
+    let Ok((site, _, _)) = need(&state, headers, "administrator").await else {
+        return redirect_login();
+    };
+    if !plugins::is_active(&site, "Links") {
+        return error_to("/admin/links.php", "请先启用 Links 插件");
+    }
+    let _ = crate::friend_links::ensure_table(&state.db).await;
+    let form = pairs(body);
+    let verb = q
+        .get("do")
+        .map(|s| s.as_str())
+        .or_else(|| form.get("do").map(|s| s.as_str()))
+        .unwrap_or("");
+    let back = "/admin/links.php";
+    match verb {
+        "insert" => {
+            let name = form.get("name").map(|s| s.as_str()).unwrap_or("");
+            let url = form.get("url").map(|s| s.as_str()).unwrap_or("");
+            let image = form.get("image").map(|s| s.as_str()).unwrap_or("");
+            let sort = form.get("sort").map(|s| s.as_str()).unwrap_or("ten");
+            let description = form.get("description").map(|s| s.as_str()).unwrap_or("");
+            match crate::friend_links::validate(name, url, image) {
+                Err(msg) => error_to(back, msg),
+                Ok((name, url, image)) => {
+                    match crate::friend_links::insert(
+                        &state.db,
+                        &name,
+                        &url,
+                        sort,
+                        &image,
+                        description,
+                        "",
+                    )
+                    .await
+                    {
+                        Ok(_) => notice_to(back, &format!("链接 {name} 已经被增加")),
+                        Err(_) => error_to(back, "增加链接失败"),
+                    }
+                }
+            }
+        }
+        "update" => {
+            let lid = q
+                .get("lid")
+                .and_then(|s| s.parse::<i64>().ok())
+                .or_else(|| form.get("lid").and_then(|s| s.parse::<i64>().ok()))
+                .unwrap_or(0);
+            if lid <= 0 {
+                return error_to(back, "链接主键不存在");
+            }
+            let name = form.get("name").map(|s| s.as_str()).unwrap_or("");
+            let url = form.get("url").map(|s| s.as_str()).unwrap_or("");
+            let image = form.get("image").map(|s| s.as_str()).unwrap_or("");
+            let sort = form.get("sort").map(|s| s.as_str()).unwrap_or("ten");
+            let description = form.get("description").map(|s| s.as_str()).unwrap_or("");
+            match crate::friend_links::validate(name, url, image) {
+                Err(msg) => error_to(back, msg),
+                Ok((name, url, image)) => {
+                    match crate::friend_links::get(&state.db, lid).await {
+                        Ok(None) | Err(_) => return error_to(back, "链接不存在"),
+                        Ok(Some(_)) => {}
+                    }
+                    match crate::friend_links::update(
+                        &state.db, lid, &name, &url, sort, &image, description, "",
+                    )
+                    .await
+                    {
+                        Ok(true) => notice_to(back, &format!("链接 {name} 已经被更新")),
+                        _ => error_to(back, "更新链接失败"),
+                    }
+                }
+            }
+        }
+        "delete" => {
+            let lids = collect_lids(q, body);
+            if lids.is_empty() {
+                return error_to(back, "没有链接被删除");
+            }
+            match crate::friend_links::delete_many(&state.db, &lids).await {
+                Ok(n) if n > 0 => notice_to(back, "链接已经删除"),
+                _ => error_to(back, "没有链接被删除"),
+            }
+        }
+        "sort" => {
+            let lids = collect_lids(q, body);
+            // 空排序视为空操作，直接回管理页，避免误报。
+            if lids.is_empty() {
+                return redirect(back);
+            }
+            match crate::friend_links::apply_sort(&state.db, &lids).await {
+                Ok(()) => notice_to(back, "排序已经保存"),
+                Err(_) => error_to(back, "保存排序失败"),
+            }
+        }
+        _ => redirect(back),
+    }
+}
+
+fn collect_lids(q: &HashMap<String, String>, body: &str) -> Vec<i64> {
+    let mut out = Vec::new();
+    for key in ["lid[]", "lid"] {
+        if let Some(raw) = q.get(key) {
+            for part in raw.split([',', ' ']) {
+                if let Ok(n) = part.trim().parse::<i64>() {
+                    if n > 0 && !out.contains(&n) {
+                        out.push(n);
+                    }
+                }
+            }
+        }
+    }
+    for (k, values) in repeated(body) {
+        if k == "lid[]" || k == "lid" {
+            for v in values {
+                for part in v.split([',', ' ']) {
+                    if let Ok(n) = part.trim().parse::<i64>() {
+                        if n > 0 && !out.contains(&n) {
+                            // sort 保持提交顺序，delete 去重即可；统一按出现顺序保留。
+                            out.push(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // sort 需要保持 POST 里的出现顺序：repeated 已按序，q 在前 body 在后；
+    // delete 场景下若 q 与 body 都有值会合并，属幂等操作。
+    // 为保证 sort 的顺序严格等于 body 提交顺序，body 有值时以 body 为准。
+    let body_order: Vec<i64> = {
+        let mut v = Vec::new();
+        for (k, values) in repeated(body) {
+            if k == "lid[]" || k == "lid" {
+                for item in values {
+                    for part in item.split([',', ' ']) {
+                        if let Ok(n) = part.trim().parse::<i64>() {
+                            if n > 0 && !v.contains(&n) {
+                                v.push(n);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        v
+    };
+    if !body_order.is_empty() {
+        return body_order;
+    }
+    out
 }
 
 async fn themes_page(
@@ -576,6 +1122,7 @@ async fn action_dispatch(
         "options-permalink" => settings_save_permalink(State(state), headers, body).await,
         "themes-edit" => themes_edit_action(state, &headers, &q, &body).await,
         "plugins-edit" => plugins_edit_action(state, &headers, &q, &body).await,
+        "links-edit" => links_edit_action(state, &headers, &q, &body).await,
         _ => plain(StatusCode::NOT_FOUND, "请求的地址不存在"),
     }
 }
@@ -2664,6 +3211,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         categories,
         tags: Vec::new(),
         fields,
+        views: existing.as_ref().map(|p| p.views).unwrap_or(0),
     };
     let now = chrono::Utc::now().timestamp();
     let recent_posts = state
@@ -2696,6 +3244,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         viewer_uid: 0,
         viewer_auth: "",
         page_url: "",
+        access_ids: (None, None),
     };
     let view = SingleView {
         post: &post,
@@ -4560,6 +5109,12 @@ fn menu(user: &SessionUser, key: &str, site: &Site) -> String {
     }
     if user.pass("administrator") {
         manage.push(("用户", "/admin/manage-users.php", "users"));
+        if crate::plugins::is_active(site, "Links") {
+            manage.push(("友情链接", "/admin/links.php", "links"));
+        }
+        if crate::plugins::is_active(site, "Access") {
+            manage.push(("访问统计", "/admin/access-console.php", "access"));
+        }
     }
     groups.push(("管理", "/admin/manage-posts.php", manage));
     if user.pass("administrator") {
@@ -4628,6 +5183,8 @@ fn pager_html(page: usize, pages: usize, base: &str, q: &HashMap<String, String>
     html.push_str("</ul>");
     html
 }
+
+const LINKS_SORT_JS: &str = r##"<script>(function(){var t=document.getElementById('links-table');if(!t)return;var drag=null;t.querySelectorAll('tr[id^="link-"]').forEach(function(tr){tr.addEventListener('dragstart',function(){drag=tr});tr.addEventListener('dragover',function(e){e.preventDefault()});tr.addEventListener('drop',function(e){e.preventDefault();if(!drag||drag===tr)return;var tb=tr.parentNode;var rows=Array.from(tb.children);var di=rows.indexOf(drag),ti=rows.indexOf(tr);if(di<ti)tb.insertBefore(drag,tr.nextSibling);else tb.insertBefore(drag,tr)})});var btn=document.getElementById('save-sort');if(btn)btn.addEventListener('click',function(){var ids=Array.from(t.querySelectorAll('input[type=checkbox]')).map(function(c){return c.value});var body=ids.map(function(id){return 'lid%5B%5D='+encodeURIComponent(id)}).join('&')+'&do=sort';fetch('/action/links-edit?do=sort',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(){location.reload()})})})();</script>"##;
 
 const ADMIN_JS: &str = r##"
 document.querySelectorAll('.btn-drop').forEach(function (drop) {
