@@ -355,3 +355,48 @@ async fn links_crud_sort_and_action_compat() {
     assert_eq!(status, StatusCode::FOUND);
     assert_eq!(tiebidli::friend_links::list(&db).await.unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn links_edit_requires_csrf_token() {
+    // 与 Typecho 一样的门禁：`_` token 对不上就回 Referer 且不写库，不是数据不兼容。
+    // 负向：无 `_` / 错误 `_` 时已登录、Referer 正确，insert 不得插入新行。
+    // 正向：`sign_action` 带正确 `_` 时仍须插入成功。
+    let (app, db) = boot().await;
+    let cookie = login(&app).await;
+    activate(&app, &db, &cookie, "Links").await;
+    let referer = "http://test.local/admin/index.php";
+    let form = "name=csrf站&url=https://csrf.example&sort=ten&image=&description=d&do=insert";
+    let count = || async {
+        tiebidli::friend_links::list(&db).await.unwrap().len()
+    };
+    assert_eq!(count().await, 0);
+
+    // 无 `_`：302 回 Referer，库不变。
+    let (status, _, headers) =
+        post_form(&app, "/action/links-edit?do=insert", form, &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(
+        headers.get("location").and_then(|v| v.to_str().ok()).unwrap_or(""),
+        referer
+    );
+    assert_eq!(count().await, 0);
+
+    // 错误 `_`：同样不写库。
+    let (status, _, _) = post_form(
+        &app,
+        "/action/links-edit?do=insert&_=badtoken",
+        form,
+        &cookie,
+        referer,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert_eq!(count().await, 0);
+
+    // 正确 `_`：插入成功（正向对照）。
+    let (path, signed_referer) = sign_action(&db, "/action/links-edit?do=insert").await;
+    let (status, _, headers) = post_form(&app, &path, form, &cookie, signed_referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(headers.get("location").unwrap().to_str().unwrap().contains("notice="));
+    assert_eq!(count().await, 1);
+}
