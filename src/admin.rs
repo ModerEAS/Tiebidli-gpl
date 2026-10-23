@@ -391,7 +391,9 @@ async fn links_page(
     layout(&site, &user, "links", "友情链接", None, "container", &main)
 }
 
-/// Access 精简控制台：日志列表 + 按内容 PV。
+/// Access 控制台：访问概览（今日/昨日/总计 PV·UV·IP、24 小时分布、来源、热门内容）
+/// 与访问日志（筛选、分页、批量删除）双 Tab，对齐参考 `page/console.php` 分区。
+/// 图表只用数字表格（不引入外网 JS），删除经 `/access/log/delete.json`，IP 查询经 `/access/ip.json`。
 async fn access_console(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -408,40 +410,190 @@ async fn access_console(
         .parse::<i64>()
         .unwrap_or(10)
         .clamp(1, 100);
-    let page = q
-        .get("page")
-        .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(1)
-        .max(1);
-    let total = crate::access::log_count(&state.db).await.unwrap_or(0);
-    let pages = ((total + page_size - 1) / page_size).max(1);
-    let page = page.min(pages);
-    let logs = crate::access::recent_logs(&state.db, page_size, (page - 1) * page_size)
-        .await
-        .unwrap_or_default();
-    let pv = crate::access::pv_by_content(&state.db).await.unwrap_or_default();
-    let mut pv_rows = String::new();
-    if pv.is_empty() {
-        pv_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
+    let action = q.get("action").map(String::as_str).unwrap_or("logs");
+    let tabs = format!(
+        r#"<div class="col-mb-12"><ul class="typecho-option-tabs fix-tabs clearfix"><li{class_logs}><a href="/admin/access-console.php?action=logs">访问日志</a></li><li{class_overview}><a href="/admin/access-console.php?action=overview">访问概览</a></li><li><a href="/admin/options-plugin.php?config=Access">插件设置</a></li></ul></div>"#,
+        class_logs = if action == "overview" { "" } else { " class=\"current\"" },
+        class_overview = if action == "overview" {
+            " class=\"current\""
+        } else {
+            ""
+        },
+    );
+    let body = if action == "overview" {
+        access_overview_html(&state, &site, page_size).await
+    } else {
+        access_logs_html(&state, &site, &q, page_size).await
+    };
+    let main = format!(
+        r#"<div class="row typecho-page-main" role="main"><div class="col-mb-12">{flash}</div>{tabs}{body}</div>"#,
+        flash = flash_html(&q),
+    );
+    layout(&site, &user, "access", "访问统计", None, "container", &main)
+}
+
+async fn access_overview_html(state: &AppState, site: &Site, page_size: i64) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let ov = crate::access::overview(&state.db, now, site.timezone()).await;
+    let (domains, urls) = crate::access::top_referers(&state.db, page_size).await;
+    let hot = crate::access::pv_by_content(&state.db).await.unwrap_or_default();
+    let mut domain_rows = String::new();
+    if domains.is_empty() {
+        domain_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
     }
-    for (cid, title, n) in &pv {
+    for (i, (value, n)) in domains.iter().enumerate() {
+        domain_rows.push_str(&format!(
+            "<tr><td>{}</td><td>{n}</td><td>{}</td></tr>",
+            i + 1,
+            html_escape(value),
+        ));
+    }
+    let mut url_rows = String::new();
+    if urls.is_empty() {
+        url_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
+    }
+    for (i, (value, n)) in urls.iter().enumerate() {
+        url_rows.push_str(&format!(
+            "<tr><td>{}</td><td>{n}</td><td>{}</td></tr>",
+            i + 1,
+            html_escape(value),
+        ));
+    }
+    let mut hot_rows = String::new();
+    if hot.is_empty() {
+        hot_rows.push_str("<tr><td colspan=\"3\">暂无统计</td></tr>");
+    }
+    for (cid, title, n) in &hot {
         let label = if title.is_empty() {
             format!("cid {cid}")
         } else {
             title.clone()
         };
-        pv_rows.push_str(&format!(
-            "<tr><td>{cid}</td><td>{label}</td><td>{n}</td></tr>",
+        hot_rows.push_str(&format!(
+            "<tr><td>{cid}</td><td>{}</td><td>{n}</td></tr>",
+            html_escape(&label),
+        ));
+    }
+    let mut hour_rows = String::new();
+    for h in &ov.hours {
+        hour_rows.push_str(&format!(
+            "<tr><td>{}:00</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            h.hour, h.pv, h.uv, h.ip,
+        ));
+    }
+    format!(
+        r#"<div class="col-mb-12 typecho-list"><h4 class="typecho-list-table-title">访问数表格</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><colgroup><col width="10%"/><col width="30%"/><col width="25%"/><col width=""/></colgroup>
+<thead><tr><th> </th><th>浏览量(PV)</th><th>访客数(UV)</th><th>IP数</th></tr></thead><tbody>
+<tr><td>今日</td><td>{pv_t}</td><td>{uv_t}</td><td>{ip_t}</td></tr>
+<tr><td>昨日</td><td>{pv_y}</td><td>{uv_y}</td><td>{ip_y}</td></tr>
+<tr><td>总计</td><td>{pv_a}</td><td>{uv_a}</td><td>{ip_a}</td></tr>
+</tbody></table></div>
+<h4 class="typecho-list-table-title">来源域名</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><colgroup><col width="10%"/><col width="10%"/><col width="80%"/></colgroup>
+<thead><tr><th>排名</th><th>次数</th><th>来源域名</th></tr></thead><tbody>{domain_rows}</tbody></table></div>
+<h4 class="typecho-list-table-title">来源页</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><colgroup><col width="10%"/><col width="10%"/><col width="80%"/></colgroup>
+<thead><tr><th>排名</th><th>次数</th><th>来源URL</th></tr></thead><tbody>{url_rows}</tbody></table></div>
+<h4 class="typecho-list-table-title">热门内容</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><thead><tr><th>内容 id</th><th>标题</th><th>PV</th></tr></thead><tbody>{hot_rows}</tbody></table></div>
+<h4 class="typecho-list-table-title">今日图表（按小时，数字表）</h4>
+<div class="typecho-table-wrap"><table class="typecho-list-table"><thead><tr><th>小时</th><th>浏览量(PV)</th><th>访客数(UV)</th><th>IP数</th></tr></thead><tbody>{hour_rows}</tbody></table></div>
+</div>"#,
+        pv_t = ov.pv_today,
+        uv_t = ov.uv_today,
+        ip_t = ov.ip_today,
+        pv_y = ov.pv_yesterday,
+        uv_y = ov.uv_yesterday,
+        ip_y = ov.ip_yesterday,
+        pv_a = ov.pv_all,
+        uv_a = ov.uv_all,
+        ip_a = ov.ip_all,
+    )
+}
+
+async fn access_logs_html(
+    state: &AppState,
+    site: &Site,
+    q: &HashMap<String, String>,
+    page_size: i64,
+) -> String {
+    use crate::access::{LogFilter, LogKind};
+    let filter_name = q.get("filter").map(String::as_str).unwrap_or("all");
+    let kind = LogKind::from_param(q.get("type").map(String::as_str).unwrap_or("1"));
+    let filter = match filter_name {
+        "ip" => q
+            .get("ip")
+            .and_then(|s| s.trim().parse::<std::net::Ipv4Addr>().ok())
+            .map(|addr| LogFilter::Ip(u32::from(addr) as i64))
+            .unwrap_or(LogFilter::All),
+        "post" => q
+            .get("cid")
+            .and_then(|s| s.parse::<i64>().ok())
+            .filter(|cid| *cid > 0)
+            .map(LogFilter::Content)
+            .unwrap_or(LogFilter::All),
+        "path" => q
+            .get("path")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(LogFilter::Path)
+            .unwrap_or(LogFilter::All),
+        _ => LogFilter::All,
+    };
+    let page = q
+        .get("page")
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let total = crate::access::log_count_filtered(&state.db, &filter, kind)
+        .await
+        .unwrap_or(0);
+    let pages = ((total + page_size - 1) / page_size).max(1);
+    let page = page.min(pages);
+    let logs = crate::access::recent_logs_filtered(&state.db, &filter, kind, page_size, (page - 1) * page_size)
+        .await
+        .unwrap_or_default();
+    // 内页筛选下拉的数据源（按文章 PV 排行）。
+    let cid_list = crate::access::pv_by_content(&state.db).await.unwrap_or_default();
+    let mut cid_opts = String::new();
+    for (cid, title, n) in &cid_list {
+        let label = if title.is_empty() {
+            format!("cid {cid}")
+        } else {
+            title.clone()
+        };
+        let sel = if matches!(&filter, LogFilter::Content(id) if id == cid) {
+            " selected=\"true\""
+        } else {
+            ""
+        };
+        cid_opts.push_str(&format!(
+            "<option{sel} value=\"{cid}\">{label} ({n})</option>",
             label = html_escape(&label),
         ));
     }
+    let opt = |value: &str, current: &str| {
+        if value == current {
+            " selected=\"true\""
+        } else {
+            ""
+        }
+    };
+    let type_num = q.get("type").map(String::as_str).unwrap_or("1");
+    let cancel = if filter_name == "all" {
+        String::new()
+    } else {
+        "<a href=\"/admin/access-console.php?action=logs\">&laquo; 取消筛选</a>".to_string()
+    };
     let mut log_rows = String::new();
     if logs.is_empty() {
-        log_rows.push_str("<tr><td colspan=\"5\"><h6 class=\"typecho-list-table-title\">暂无日志</h6></td></tr>");
+        log_rows.push_str("<tr><td colspan=\"6\"><h6 class=\"typecho-list-table-title\">当前无日志</h6></td></tr>");
     }
     for log in &logs {
         log_rows.push_str(&format!(
-            "<tr><td>{url}</td><td>{ip}</td><td>{referer}</td><td>{cid}</td><td>{time}</td></tr>",
+            "<tr><td><input type=\"checkbox\" value=\"{id}\" name=\"id[]\"></td><td>{url}</td><td>{ip} <a data-access-ip=\"{ip}\" href=\"#\">[ ? ]</a><span class=\"access-ip-result\"></span></td><td>{referer}</td><td>{cid}</td><td>{time}</td></tr>",
+            id = log.id,
             url = html_escape(&log.url),
             ip = html_escape(&log.ip),
             referer = html_escape(&log.referer),
@@ -453,19 +605,59 @@ async fn access_console(
             )),
         ));
     }
-    let pager = pager_html(page as usize, pages as usize, "/admin/access-console.php", &q);
-    let main = format!(
-        r#"<div class="row typecho-page-main" role="main"><div class="col-mb-12">{flash}</div>
-<div class="col-mb-12 typecho-list"><h4 class="typecho-list-table-title">访问概览（按内容 PV，共 {total} 条日志）</h4>
-<div class="typecho-table-wrap"><table class="typecho-list-table"><thead><tr><th>内容 id</th><th>标题</th><th>PV</th></tr></thead><tbody>{pv_rows}</tbody></table></div>
-<h4 class="typecho-list-table-title">访问日志</h4>
-<div class="typecho-table-wrap"><table class="typecho-list-table"><thead><tr><th>受访地址</th><th>IP</th><th>Referer</th><th>内容</th><th>日期</th></tr></thead><tbody>{log_rows}</tbody></table></div>
-<div class="typecho-list-operate clearfix">{pager}</div></div></div>"#,
-        flash = flash_html(&q),
-    );
-    layout(&site, &user, "access", "访问统计", None, "container", &main)
+    let pager = pager_html(page as usize, pages as usize, "/admin/access-console.php", q);
+    format!(
+        r#"<div class="col-mb-12 typecho-list"><div class="typecho-list-operate clearfix">
+<div class="operate"><label><i class="sr-only">全选</i><input type="checkbox" class="typecho-table-select-all"></label>
+<div class="btn-group btn-drop"><button class="btn dropdown-toggle btn-s" type="button"><i class="sr-only">操作</i>选中项 <i class="i-caret-down"></i></button>
+<ul class="dropdown-menu"><li><a data-action="delete" href="javascript:;">删除</a></li></ul></div></div>
+<form method="get" class="search-form" action="/admin/access-console.php"><div class="search" role="search">{cancel}
+<input type="hidden" name="action" value="logs">
+<select name="filter"><option{all} value="all">所有</option><option{ip} value="ip">按IP</option><option{post} value="post">按文章</option><option{path} value="path">按路由</option></select>
+<input type="text" class="text-s" placeholder="输入ip" value="{ip_val}" name="ip">
+<select name="cid">{cid_opts}</select>
+<input type="text" class="text-s" placeholder="输入路由" value="{path_val}" name="path">
+<select name="type"><option{t1} value="1">默认(仅人类)</option><option{t2} value="2">仅爬虫</option><option{t3} value="3">所有</option></select>
+<input type="hidden" name="page" value="1"><button type="submit" class="btn btn-s">筛选</button></div></form>
+</div>
+<form method="post" class="operate-form"><div class="typecho-table-wrap"><table class="typecho-list-table">
+<colgroup><col width="5"/><col width="20%"/><col width="18%"/><col width="20%"/><col width="10%"/><col width="15%"/></colgroup>
+<thead><tr><th> </th><th>受访地址</th><th>IP地址</th><th>Referer</th><th>内容</th><th>日期</th></tr></thead>
+<tbody>{log_rows}</tbody></table></div></form>
+<div class="typecho-list-operate clearfix">{pager}</div></div>{js}"#,
+        all = opt("all", filter_name),
+        ip = opt("ip", filter_name),
+        post = opt("post", filter_name),
+        path = opt("path", filter_name),
+        ip_val = html_escape(q.get("ip").map(String::as_str).unwrap_or("")),
+        path_val = html_escape(q.get("path").map(String::as_str).unwrap_or("")),
+        t1 = opt("1", type_num),
+        t2 = opt("2", type_num),
+        t3 = opt("3", type_num),
+        js = ACCESS_CONSOLE_JS,
+    )
 }
 
+const ACCESS_CONSOLE_JS: &str = r##"<script>(function(){
+var del=document.querySelector('a[data-action="delete"]');
+if(del)del.addEventListener('click',function(e){
+e.preventDefault();
+var ids=Array.from(document.querySelectorAll('form.operate-form tbody input[type=checkbox]:checked')).map(function(c){return parseInt(c.value,10)}).filter(function(n){return n>0});
+if(!ids.length)return;
+if(!window.confirm('你确认要删除这些日志吗?'))return;
+fetch('/access/log/delete.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ids)}).then(function(r){return r.json()}).then(function(j){if(j&&j.code===0)location.reload();else alert((j&&j.data)||'删除失败')});
+});
+document.querySelectorAll('a[data-access-ip]').forEach(function(a){
+a.addEventListener('click',function(e){
+e.preventDefault();
+var box=a.parentNode.querySelector('.access-ip-result');
+fetch('/access/ip.json?ip='+encodeURIComponent(a.getAttribute('data-access-ip'))).then(function(r){return r.json()}).then(function(j){
+var t=(j&&j.code===0)?j.data:('查询失败：'+((j&&j.data)||''));
+if(box)box.textContent=' '+t;else alert(t);
+});
+});
+});
+})();</script>"##;
 /// 兼容 `/action/links-edit`：`do=insert/update/delete/sort`。
 async fn links_edit_action(
     state: Arc<AppState>,
@@ -3052,6 +3244,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         viewer_uid: 0,
         viewer_auth: "",
         page_url: "",
+        access_ids: (None, None),
     };
     let view = SingleView {
         post: &post,
