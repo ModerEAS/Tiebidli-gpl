@@ -433,7 +433,8 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body.contains("Access Denied"), "{body}");
 
-    // B：ip.json。本地可判定回 code 0，公网/非法回明确错误，不假造归属。
+    // B：ip.json。本地可判定回 code 0，非法回明确错误；公网走 KeyCDN，
+    // 可达回 code 0 的归属、不可达回 code 100 的 fallback 文案（均不断言具体网络结果）。
     let (status, body, _, _) = call(
         &app,
         Request::builder().uri("/access/ip.json?ip=127.0.0.1").header("cookie", &cookie).body(Body::empty()).unwrap(),
@@ -441,19 +442,24 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body.contains("\"code\":0"), "{body}");
-    for (path, want) in [
-        ("/access/ip.json?ip=8.8.8.8", "未内置 IP 归属库"),
-        ("/access/ip.json?ip=bogus", "解析ip失败"),
-    ] {
-        let (status, body, _, _) = call(
-            &app,
-            Request::builder().uri(path).header("cookie", &cookie).body(Body::empty()).unwrap(),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "{path} {body}");
-        assert!(body.contains("\"code\":100"), "{path} {body}");
-        assert!(body.contains(want), "{path} {body}");
-    }
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().uri("/access/ip.json?ip=bogus").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("\"code\":100"), "{body}");
+    assert!(body.contains("解析ip失败"), "{body}");
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().uri("/access/ip.json?ip=8.8.8.8").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("\"code\":0") || body.contains("tools.keycdn.com"),
+        "{body}"
+    );
     let (status, body, _, _) = call(
         &app,
         Request::builder().uri("/access/ip.json?ip=127.0.0.1").body(Body::empty()).unwrap(),
@@ -611,4 +617,129 @@ async fn links_edit_requires_csrf_token() {
     assert_eq!(status, StatusCode::FOUND);
     assert!(headers.get("location").unwrap().to_str().unwrap().contains("notice="));
     assert_eq!(count().await, 1);
+}
+
+#[tokio::test]
+async fn access_feed_entrypoint_ua_parity() {
+    // 对齐 PHP `Widget_Archive->beforeRender` / `Access_Core::getEntryPoint` / UA 入库。
+    let (app, db) = boot().await;
+    let cookie = login(&app).await;
+    activate(&app, &db, &cookie, "Access").await;
+    let ep_name = tiebidli::auth::cookie_name("http://test.local", tiebidli::access::ENTRYPOINT_COOKIE);
+    let log_count = || async {
+        sqlx::query_scalar::<_, i64>(r#"SELECT COUNT(*) FROM "typecho_access_log""#)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap()
+    };
+    async fn last_ep(db: &Db) -> (String, i64, String, String) {
+        let row = sqlx::query(r#"SELECT entrypoint, robot, robot_id, browser_id FROM "typecho_access_log" ORDER BY id DESC LIMIT 1"#)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        (
+            tiebidli::db::col_str(&row, "entrypoint"),
+            tiebidli::db::col_i64(&row, "robot").unwrap_or(-1),
+            tiebidli::db::col_str(&row, "robot_id"),
+            tiebidli::db::col_str(&row, "browser_id"),
+        )
+    }
+    fn set_cookies(headers: &axum::http::HeaderMap) -> String {
+        headers.get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()).collect::<Vec<_>>().join("\n")
+    }
+    assert_eq!(log_count().await, 0);
+
+    // 1) feed 归档（后端模式）记一行，cid/mid 为空。
+    let (status, feed, _, _) = get(&app, "/feed/").await;
+    assert_eq!(status, StatusCode::OK, "{feed}");
+    assert!(feed.contains("<rss") || feed.contains("<feed") || feed.contains("<rdf"), "{feed}");
+    assert_eq!(log_count().await, 1);
+    let nulls: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM "typecho_access_log" WHERE content_id IS NULL AND meta_id IS NULL"#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(nulls, 1);
+    // 评论 feed 同样记。
+    let (status, _, _, _) = get(&app, "/feed/comments/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(log_count().await, 2);
+
+    // 2) 外链 Referer 首次访问：入库 entrypoint + Set-Cookie。
+    let (status, _, _, headers) = call(
+        &app,
+        Request::builder().uri("/").header("referer", "https://ext.example/a").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(log_count().await, 3);
+    let set = set_cookies(&headers);
+    assert!(set.contains(&ep_name), "{set}");
+    let (ep, _, _, _) = last_ep(&db).await;
+    assert_eq!(ep, "https://ext.example/a");
+    let ep_cookie = headers
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|v| v.starts_with(&format!("{ep_name}=")))
+        .map(|v| v.split(';').next().unwrap_or("").to_string())
+        .expect("entrypoint cookie");
+
+    // 同站 Referer：entrypoint 置空且不写 cookie（旧 cookie 保留不断言）。
+    let (status, _, _, headers) = call(
+        &app,
+        Request::builder()
+            .uri("/")
+            .header("referer", "http://test.local/archives/1/")
+            .header("cookie", &ep_cookie)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (ep, _, _, _) = last_ep(&db).await;
+    assert_eq!(ep, "");
+    assert!(!set_cookies(&headers).contains(&ep_name));
+
+    // 无 Referer + 带 cookie：沿用 cookie 的 entrypoint，不重复写。
+    let (status, _, _, headers) = call(
+        &app,
+        Request::builder().uri("/").header("cookie", &ep_cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (ep, _, _, _) = last_ep(&db).await;
+    assert_eq!(ep, "https://ext.example/a");
+    assert!(!set_cookies(&headers).contains(&ep_name));
+
+    // 3) 爬虫 UA：robot=1 且 robot_id 非空。
+    let (status, _, _, _) = call(
+        &app,
+        Request::builder()
+            .uri("/")
+            .header("user-agent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, robot, robot_id, _) = last_ep(&db).await;
+    assert_eq!(robot, 1);
+    assert!(!robot_id.is_empty(), "{robot_id}");
+
+    // 普通浏览器：browser_id/os 有值，robot=0。
+    let (status, _, _, _) = call(
+        &app,
+        Request::builder()
+            .uri("/")
+            .header("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, robot, _, browser) = last_ep(&db).await;
+    assert_eq!(robot, 0);
+    assert_eq!(browser, "Chrome");
 }
