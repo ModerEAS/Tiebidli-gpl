@@ -752,17 +752,19 @@ async fn search_like(
             ),
         )));
     }
-    log_archive_visit(ctx, None, None).await;
+    let set_ep = log_archive_visit(ctx, None, None).await;
     let chrome = chrome(ctx, ctx.cookies.clone());
     let html = ctx
         .state
         .theme
         .render_search(&chrome, &keyword, &posts, page, total)?;
+    let mut headers = HeaderMap::new();
+    attach_entrypoint(&mut headers, set_ep);
     Ok(Step::Done(html_response(
         ctx,
         StatusCode::OK,
         html,
-        &HeaderMap::new(),
+        &headers,
     )))
 }
 
@@ -882,7 +884,7 @@ async fn show_list(
         ListFilter::Tag(mid) => Some(*mid),
         _ => None,
     };
-    log_archive_visit(ctx, None, access_mid).await;
+    let set_ep = log_archive_visit(ctx, None, access_mid).await;
     let mut chrome = chrome(ctx, ctx.cookies.clone());
     chrome.access_ids = (None, access_mid);
     let html = ctx.state.theme.render_list(
@@ -897,11 +899,13 @@ async fn show_list(
         &vals,
         show_cloud,
     )?;
+    let mut headers = HeaderMap::new();
+    attach_entrypoint(&mut headers, set_ep);
     Ok(Step::Done(html_response(
         ctx,
         StatusCode::OK,
         html,
-        &HeaderMap::new(),
+        &headers,
     )))
 }
 
@@ -1100,7 +1104,7 @@ async fn show_single(
             push_cookie(&mut headers, &cookie_name, &next, None);
         }
         // 后端模式记一条访问日志（cid 为当前内容），前端模式靠打点，不双写。
-        log_archive_visit(ctx, Some(post.cid), None).await;
+        attach_entrypoint(&mut headers, log_archive_visit(ctx, Some(post.cid), None).await);
     }
     Ok(Step::Done(html_response(ctx, status, html, &headers)))
 }
@@ -1123,7 +1127,10 @@ async fn track_gif(
         return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
     }
     let write_type = crate::plugins::plugin_setting(site, "Access", "writeType", "0");
-    if write_type.trim() == "1" {
+    // 前端写库路径同样解析 entrypoint：外链首次访问把 cookie 带回像素响应。
+    let root = auth::site_root(&state.cfg.site_url, &links::site_base(&state.cfg.site_url, site));
+    let ep_name = crate::auth::cookie_name(&root, crate::access::ENTRYPOINT_COOKIE);
+    let set_ep: Option<(String, String)> = if write_type.trim() == "1" {
         // 表可能被外部删掉（如 isDrop=0 后又手动启用），best-effort 补上，保证打点不 500。
         let _ = crate::access::ensure_table(&state.db).await;
         if !access_admin(state, site, cookies).await {
@@ -1138,25 +1145,43 @@ async fn track_gif(
                 .get(header::REFERER)
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("");
+            let cookie_ep = cookies.get(&ep_name).map(String::as_str).unwrap_or("");
+            let (entrypoint, needs_set) = crate::access::resolve_entrypoint(
+                &links::site_base(&state.cfg.site_url, site),
+                referer,
+                cookie_ep,
+            );
             let _ = crate::access::log_visit(
                 &state.db,
                 ua,
                 url,
                 &client_ip(headers),
                 referer,
+                &entrypoint,
                 now,
                 cid,
                 mid,
             )
             .await;
+            needs_set.then(|| (ep_name.clone(), entrypoint))
+        } else {
+            None
         }
-    }
-    Ok(Response::builder()
+    } else {
+        None
+    };
+    let mut resp = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/gif")
         .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate")
         .body(Body::from(crate::access::TRACK_GIF))
-        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败")))
+        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"));
+    if let Some((name, value)) = set_ep {
+        if let Some(v) = cookie_header_value(&name, &value, None) {
+            resp.headers_mut().append(header::SET_COOKIE, v);
+        }
+    }
+    Ok(resp)
 }
 
 /// Access JSON 接口的管理员门禁，对齐 PHP `Access_Action::checkAuth`。
@@ -1184,9 +1209,9 @@ fn json_response(value: serde_json::Value) -> Response {
         .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))
 }
 
-/// `GET /access/ip.json?ip=`：仅管理员。未内置归属库、不调外部接口：
-/// 本地可判定的（回环/内网等）返回 `code 0`，公网地址与非法输入返回 `code 100` 明错，
-/// 不假造地理数据（对齐 PHP 查不到时的错误分支语义）。
+/// `GET /access/ip.json`：仅管理员。对齐 PHP `Access_Action::ip`：
+/// 本地可判定的（回环/内网等）直接回 `code 0`；公网走 KeyCDN，成功 `code 0`，
+/// 不可达回 `code 100`（与 PHP 相近文案），不假造地理数据。
 async fn access_ip_json(
     state: &AppState,
     site: &crate::model::Site,
@@ -1200,28 +1225,8 @@ async fn access_ip_json(
         return Ok(json_response(serde_json::json!({"code": 100, "data": "Access Denied"})));
     }
     let raw = query.get("ip").map(String::as_str).unwrap_or("");
-    let Ok(addr) = raw.trim().parse::<std::net::Ipv4Addr>() else {
-        return Ok(json_response(serde_json::json!({"code": 100, "data": "解析ip失败"})));
-    };
-    let label = if addr.is_loopback() {
-        "回环地址"
-    } else if addr.is_private() {
-        "内网地址"
-    } else if addr.is_link_local() {
-        "链路本地地址"
-    } else if addr.is_multicast() {
-        "组播地址"
-    } else if addr.is_broadcast() || addr.is_unspecified() || addr.is_documentation() {
-        "保留地址"
-    } else {
-        return Ok(json_response(serde_json::json!({
-            "code": 100,
-            "data": "未内置 IP 归属库，公网地址无法查询"
-        })));
-    };
-    Ok(json_response(
-        serde_json::json!({"code": 0, "data": format!("{addr} {label}")}),
-    ))
+    let (code, data) = crate::access::geo_for_ip(raw).await;
+    Ok(json_response(serde_json::json!({"code": code, "data": data})))
 }
 
 /// `/access/log/delete.json`：仅管理员，JSON 体为 id 数组或 `{"ids": [...]}`，
@@ -1268,6 +1273,8 @@ async fn feed_like(ctx: &ReqCtx<'_>, params: &HashMap<String, String>) -> anyhow
     let raw = params.get("feed").cloned().unwrap_or_default();
     let (kind, rest) = split_feed(&raw);
     let rest = normalize_path(&leading_slash(rest.trim()));
+    // 对齐 PHP `Widget_Archive->beforeRender`：任意 Archive（含 feed）都记一条归档日志
+    //（`parseArchive` 未识别 feed，cid/mid 为空）。管理员跳过、前端模式不双写照旧。
     if rest == "/comments" {
         let rows = ctx.state.db.recent_comments(10, ctx.now).await?;
         let title = format!("{} 的评论", ctx.site.get_or("title", "Tiebidli"));
@@ -1280,7 +1287,9 @@ async fn feed_like(ctx: &ReqCtx<'_>, params: &HashMap<String, String>) -> anyhow
             &rows,
             ctx.site.flag("commentsMarkdown", false),
         );
-        return Ok(Step::Done(xml_response(kind, xml)));
+        let mut extra = HeaderMap::new();
+        attach_entrypoint(&mut extra, log_archive_visit(ctx, None, None).await);
+        return Ok(Step::Done(xml_response_with(kind, xml, &extra)));
     }
     let inner = ReqCtx {
         feed: Some(kind),
@@ -1289,7 +1298,15 @@ async fn feed_like(ctx: &ReqCtx<'_>, params: &HashMap<String, String>) -> anyhow
     };
     let target = if rest == "/" { "/" } else { rest.as_str() };
     match walk_boxed(&inner, target).await? {
-        Step::Done(resp) => Ok(Step::Done(resp)),
+        Step::Done(mut resp) => {
+            if let Some((name, value)) = log_archive_visit(ctx, None, None).await {
+                if let Some(v) = cookie_header_value(&name, &value, None) {
+                    resp.headers_mut().append(header::SET_COOKIE, v);
+                }
+            }
+            Ok(Step::Done(resp))
+        }
+        // 聚合 feed 未命中由 404 归档记（`not_found` 内已记），这里不再记，避免双写。
         Step::Next => not_found(ctx).await.map(Step::Done),
     }
 }
@@ -1820,15 +1837,17 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
 
 /// 后端写入模式的归档访问日志（对齐 `Plugin::backend` + `writeLogs` 的 `isAdmin` 跳过）。
 /// 调用方按 `parseArchive` 语义传入 `cid`/`mid`；前端模式（`writeType=1`）靠打点，不双写。
-async fn log_archive_visit(ctx: &ReqCtx<'_>, cid: Option<i64>, mid: Option<i64>) {
+/// 入库列对齐 `Access_Core::writeLogs`（UA 解析 + entrypoint）；
+/// 外链首次访问返回 `Some((cookie名, entrypoint))`，调用方负责把 Set-Cookie 带回响应。
+async fn log_archive_visit(ctx: &ReqCtx<'_>, cid: Option<i64>, mid: Option<i64>) -> Option<(String, String)> {
     if *ctx.method != Method::GET {
-        return;
+        return None;
     }
     if !crate::plugins::is_active(ctx.site, "Access") || ctx.viewer_is_admin {
-        return;
+        return None;
     }
     if crate::plugins::plugin_setting(ctx.site, "Access", "writeType", "0").trim() == "1" {
-        return;
+        return None;
     }
     let ua = ctx
         .headers
@@ -1840,25 +1859,41 @@ async fn log_archive_visit(ctx: &ReqCtx<'_>, cid: Option<i64>, mid: Option<i64>)
         .get(header::REFERER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
+    let root = root_of(ctx);
+    let ep_name = crate::auth::cookie_name(&root, crate::access::ENTRYPOINT_COOKIE);
+    let cookie_ep = ctx.cookies.get(&ep_name).map(String::as_str).unwrap_or("");
+    let (entrypoint, needs_set) =
+        crate::access::resolve_entrypoint(&base_of(ctx), referer, cookie_ep);
     let _ = crate::access::log_visit(
         &ctx.state.db,
         ua,
         ctx.page_url,
         &client_ip(ctx.headers),
         referer,
+        &entrypoint,
         ctx.now,
         cid,
         mid,
     )
     .await;
+    needs_set.then(|| (ep_name, entrypoint))
+}
+
+/// `log_archive_visit` 带回的 entrypoint cookie 写入响应头。
+fn attach_entrypoint(headers: &mut HeaderMap, set: Option<(String, String)>) {
+    if let Some((name, value)) = set {
+        push_cookie(headers, &name, &value, None);
+    }
 }
 
 async fn not_found(ctx: &ReqCtx<'_>) -> anyhow::Result<Response> {
     // 404 归档同样记（`parseArchive` 明确处理 404 分支）。
-    log_archive_visit(ctx, None, None).await;
+    let set_ep = log_archive_visit(ctx, None, None).await;
     let chrome = chrome(ctx, ctx.cookies.clone());
     let html = ctx.state.theme.render_404(&chrome)?;
-    Ok(html_response(ctx, StatusCode::NOT_FOUND, html, &HeaderMap::new()))
+    let mut headers = HeaderMap::new();
+    attach_entrypoint(&mut headers, set_ep);
+    Ok(html_response(ctx, StatusCode::NOT_FOUND, html, &headers))
 }
 
 fn absolute_url(headers: &HeaderMap, path: &str, site: &Site) -> String {
@@ -1988,14 +2023,18 @@ fn cookies_from(headers: &HeaderMap) -> HashMap<String, String> {
 }
 
 fn push_cookie(headers: &mut HeaderMap, name: &str, value: &str, max_age: Option<i64>) {
+    if let Some(v) = cookie_header_value(name, value, max_age) {
+        headers.append(header::SET_COOKIE, v);
+    }
+}
+
+fn cookie_header_value(name: &str, value: &str, max_age: Option<i64>) -> Option<HeaderValue> {
     let enc = urlencoding::encode(value);
     let mut line = format!("{name}={enc}; Path=/; SameSite=Lax");
     if let Some(age) = max_age {
         line.push_str(&format!("; Max-Age={age}"));
     }
-    if let Ok(v) = HeaderValue::from_str(&line) {
-        headers.append(header::SET_COOKIE, v);
-    }
+    HeaderValue::from_str(&line).ok()
 }
 
 fn html_response(ctx: &ReqCtx<'_>, status: StatusCode, body: String, extra: &HeaderMap) -> Response {
@@ -2017,16 +2056,24 @@ fn html_response(ctx: &ReqCtx<'_>, status: StatusCode, body: String, extra: &Hea
 }
 
 fn xml_response(kind: FeedKind, body: String) -> Response {
+    xml_response_with(kind, body, &HeaderMap::new())
+}
+
+fn xml_response_with(kind: FeedKind, body: String, extra: &HeaderMap) -> Response {
     let ct = match kind {
         FeedKind::Rss => "application/rss+xml; charset=utf-8",
         FeedKind::Atom => "application/atom+xml; charset=utf-8",
         FeedKind::Rdf => "application/rdf+xml; charset=utf-8",
     };
-    Response::builder()
+    let mut res = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, ct)
         .body(Body::from(body))
-        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "订阅生成失败"))
+        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "订阅生成失败"));
+    for (k, v) in extra.iter() {
+        res.headers_mut().append(k, v.clone());
+    }
+    res
 }
 
 fn redirect_permanent(loc: &str) -> Response {
