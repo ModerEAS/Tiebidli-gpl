@@ -1,0 +1,2 @@
+static/admin/css/grid.css、style.css 和 img/ 来自 Typecho 1.2.1 的 admin 目录，版权归 Typecho 团队，按 GNU GPL v2 发布。许可证全文见同目录 LICENSE.txt。
+normalize.css 是 MIT 许可的 normalize.css v8.0.0。

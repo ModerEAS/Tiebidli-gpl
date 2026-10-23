@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="col-mb-12 col-8" id="main" role="main">
+    <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+        <h1 class="post-title" itemprop="name headline"><a itemprop="url" href="{{ permalink }}">{{ heading }}</a></h1>
+        {% if not is_page %}
+        <ul class="post-meta">
+            <li itemprop="author" itemscope itemtype="http://schema.org/Person">作者: <a itemprop="name" href="{{ author_url }}" rel="author">{{ author }}</a></li>
+            <li>时间: <time datetime="{{ datetime }}" itemprop="datePublished">{{ date }}</time></li>
+            <li>分类: {{ categories | safe }}</li>
+        </ul>
+        {% endif %}
+        <div class="post-content" itemprop="articleBody">
+            {% if locked %}
+            <form class="protected" method="post" action="{{ permalink }}">
+                <p class="word">请输入密码访问</p>
+                {% if password_error %}<p>{{ password_error }}</p>{% endif %}
+                <p><input type="password" class="text" name="protectPassword"></p>
+                <p>
+                    <input type="hidden" name="protectCID" value="{{ cid }}">
+                    <button type="submit" class="submit">提交</button>
+                </p>
+            </form>
+            {% else %}
+            {{ html | safe }}
+            {% endif %}
+        </div>
+        {% if not is_page and tags %}
+        <p itemprop="keywords" class="tags">标签: {{ tags | safe }}</p>
+        {% endif %}
+    </article>
+
+    {% if not locked %}
+    <div id="comments">
+        {% if comment_count > 0 %}
+        <h3>{% if comment_total == 1 %}仅有一条评论{% else %}已有 {{ comment_total }} 条评论{% endif %}</h3>
+        <ol class="comment-list">{{ comment_html | safe }}</ol>
+        {{ comment_nav | safe }}
+        {% endif %}
+        {% if ping_html %}
+        <h3>引用</h3>
+        <ol class="comment-list ping-list">{{ ping_html | safe }}</ol>
+        {% endif %}
+        {% if allow_comment %}
+        <div id="{{ respond_id }}" class="respond">
+            <div class="cancel-comment-reply">
+                <a id="cancel-comment-reply-link" href="{{ permalink }}#{{ respond_id }}" rel="nofollow"{% if reply_to == 0 %} style="display:none"{% endif %} onclick="return TypechoComment.cancelReply();">取消回复</a>
+            </div>
+            <h3 id="response">添加新评论</h3>
+            {% if comment_error %}<p>{{ comment_error }}</p>{% endif %}
+            <form method="post" action="{{ comment_url }}" id="comment-form" role="form">
+                <input type="hidden" name="parent" id="comment-parent" value="{{ reply_to }}">
+                <div class="tiebidli-hp" style="position:absolute;left:-9999px;height:0;overflow:hidden" aria-hidden="true">
+                    <label>网站<input type="text" name="tiebidli_hp" tabindex="-1" autocomplete="off"></label>
+                </div>
+                {% if viewer_name %}
+                <p>登录身份: <a href="{{ admin_url }}">{{ viewer_name }}</a>. <a href="{{ logout_url }}" title="Logout">退出 &raquo;</a></p>
+                {% else %}
+                <p>
+                    <label for="author" class="required">称呼</label>
+                    <input type="text" name="author" id="author" class="text" value="{{ remember_author }}" required>
+                </p>
+                <p>
+                    <label for="mail"{% if require_mail %} class="required"{% endif %}>Email</label>
+                    <input type="email" name="mail" id="mail" class="text" value="{{ remember_mail }}"{% if require_mail %} required{% endif %}>
+                </p>
+                <p>
+                    <label for="url"{% if require_url %} class="required"{% endif %}>网站</label>
+                    <input type="url" name="url" id="url" class="text" placeholder="http://" value="{{ remember_url }}"{% if require_url %} required{% endif %}>
+                </p>
+                {% endif %}
+                <p>
+                    <label for="textarea" class="required">内容</label>
+                    <textarea rows="8" cols="50" name="text" id="textarea" class="textarea" required>{{ remember_text }}</textarea>
+                </p>
+                <p><button type="submit" class="submit">提交评论</button></p>
+            </form>
+        </div>
+        <script>
+        var TypechoComment = {
+            dom: function (id) { return document.getElementById(id); },
+            reply: function (cid, coid) {
+                var comment = this.dom(cid),
+                    response = this.dom('{{ respond_id }}'),
+                    input = this.dom('comment-parent'),
+                    textarea = response ? response.getElementsByTagName('textarea')[0] : null;
+                if (!comment || !response) return true;
+                if (input) input.value = coid;
+                if (!this.dom('comment-form-place-holder')) {
+                    var holder = document.createElement('div');
+                    holder.id = 'comment-form-place-holder';
+                    response.parentNode.insertBefore(holder, response);
+                }
+                comment.appendChild(response);
+                var cancel = this.dom('cancel-comment-reply-link');
+                if (cancel) cancel.style.display = '';
+                if (textarea && textarea.name === 'text') textarea.focus();
+                return false;
+            },
+            cancelReply: function () {
+                var response = this.dom('{{ respond_id }}'),
+                    holder = this.dom('comment-form-place-holder'),
+                    input = this.dom('comment-parent'),
+                    cancel = this.dom('cancel-comment-reply-link');
+                if (input) input.value = '';
+                if (cancel) cancel.style.display = 'none';
+                if (!response || !holder) return true;
+                holder.parentNode.insertBefore(response, holder);
+                return false;
+            }
+        };
+        </script>
+        {% elif not is_attachment %}
+        <h3>评论已关闭</h3>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if not is_page %}
+    <ul class="post-near">
+        <li>上一篇: {% if newer_url %}<a href="{{ newer_url }}" title="{{ newer_title }}">{{ newer_title }}</a>{% else %}没有了{% endif %}</li>
+        <li>下一篇: {% if older_url %}<a href="{{ older_url }}" title="{{ older_title }}">{{ older_title }}</a>{% else %}没有了{% endif %}</li>
+    </ul>
+    {% endif %}
+</div>
+{% endblock %}

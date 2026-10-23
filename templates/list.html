@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="col-mb-12 col-8" id="main" role="main">
+    {% if show_archive_title %}
+    <h3 class="archive-title">{{ heading }}</h3>
+    {% endif %}
+    {% for p in posts %}
+    <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+        <h2 class="post-title" itemprop="name headline"><a itemprop="url" href="{{ p.url }}">{{ p.title }}</a></h2>
+        <ul class="post-meta">
+            <li itemprop="author" itemscope itemtype="http://schema.org/Person">作者: <a itemprop="name" href="{{ p.author_url }}" rel="author">{{ p.author }}</a></li>
+            <li>时间: <time datetime="{{ p.datetime }}" itemprop="datePublished">{{ p.date }}</time></li>
+            <li>分类: {{ p.categories | safe }}</li>
+            <li itemprop="interactionCount"><a itemprop="discussionUrl" href="{{ p.url }}#comments">{{ p.comment_label }}</a></li>
+        </ul>
+        <div class="post-content" itemprop="articleBody">{{ p.content | safe }}</div>
+    </article>
+    {% else %}
+    <article class="post">
+        <h2 class="post-title">没有找到内容</h2>
+    </article>
+    {% endfor %}
+    {{ pagination | safe }}
+</div>
+{% endblock %}

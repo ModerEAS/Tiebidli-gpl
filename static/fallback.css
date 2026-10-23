@@ -1,0 +1,97 @@
+/* Tiebidli 自带的阅读样式。主题目录没有可用样式时使用。 */
+:root {
+  color-scheme: light;
+  --bg: #f4f1ea;
+  --paper: #fffdf8;
+  --ink: #1c1915;
+  --muted: #6d655c;
+  --line: #e4dccd;
+  --accent: #8c3d2f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.7 "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC", serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+img { max-width: 100%; height: auto; }
+#alllayout, .app { max-width: 1100px; margin: 0 auto; }
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #231f1b;
+  color: #f7f1e6;
+}
+#header a, #header .navbar-brand { color: inherit; }
+#header_left, #header_right { display: flex; align-items: center; gap: 12px; }
+#header .navbar-form { margin: 0; }
+#header input[type="search"] {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  min-width: 160px;
+}
+#aside {
+  float: left;
+  width: 220px;
+  padding: 20px 16px;
+}
+#aside .avatar img { width: 72px; height: 72px; border-radius: 50%; background: #ddd; }
+#aside .nav { list-style: none; padding: 0; margin: 16px 0 0; }
+#aside .nav li { margin: 6px 0; }
+#content { margin-left: 220px; }
+.app-content-body { display: flex; gap: 20px; padding: 20px; }
+#post-panel { flex: 1 1 auto; min-width: 0; }
+#rightAside { width: 260px; flex: 0 0 260px; }
+.bg-light, #small_widgets, header.bg-light {
+  background: transparent;
+  padding: 8px 0 16px;
+}
+h1, h2 { font-weight: 500; line-height: 1.3; }
+.single-post, .list-group-item, #blog_info, #tag_cloud, .widget {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.post-meta, .wrapper-lg, .wrapper-md { padding: 16px 18px; }
+.index-post-img img { display: block; width: 100%; border-radius: 12px 12px 0 0; }
+.summary, .text-muted, small { color: var(--muted); }
+.post-item-foot { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; padding: 0; font-size: 14px; }
+.page-navigator { display: flex; gap: 8px; justify-content: center; list-style: none; padding: 0; }
+.page-navigator .current span { display: inline-block; min-width: 2em; text-align: center; background: var(--accent); color: white; border-radius: 6px; }
+#footer { clear: both; padding: 16px 20px 32px; color: var(--muted); font-size: 14px; }
+.comment-list, .comment-children ol { list-style: none; padding-left: 0; }
+.comment-body { padding: 12px 0; border-top: 1px solid var(--line); }
+.comment-avatar img { width: 40px; height: 40px; border-radius: 50%; float: left; margin-right: 12px; }
+.form-control, .protected input[type="password"], textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: white;
+}
+.btn, .protected .submit {
+  background: var(--accent);
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.tiebidli-hp { display: none; }
+.pager { display: flex; justify-content: space-between; list-style: none; padding: 0; }
+.text-danger { color: #9d2c2c; }
+@media (max-width: 860px) {
+  #aside { float: none; width: auto; }
+  #content { margin-left: 0; }
+  .app-content-body { display: block; }
+  #rightAside { width: auto; }
+}

@@ -1,0 +1,74 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="renderer" content="webkit">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>{{ page_title }}</title>
+    {% if description %}<meta name="description" content="{{ description }}">{% endif %}
+    {% if keywords %}<meta name="keywords" content="{{ keywords }}">{% endif %}
+    <meta name="generator" content="Typecho 1.2.1">
+    <link rel="alternate" type="application/rss+xml" title="{{ site_title }}" href="{{ feed_abs | safe }}">
+    <link rel="alternate" type="application/atom+xml" title="{{ site_title }}" href="{{ atom_abs | safe }}">
+    {{ plugin_header | safe }}
+    {% if theme_ready %}
+    <link rel="stylesheet" href="{{ static | safe }}/css/style.css">
+    {% else %}
+    <link rel="stylesheet" href="/static/themes/default/normalize.css">
+    <link rel="stylesheet" href="/static/themes/default/grid.css">
+    <link rel="stylesheet" href="/static/themes/default/style.css">
+    {% endif %}
+</head>
+<body>
+<header id="header" class="clearfix">
+    <div class="container">
+        <div class="row">
+            <div class="site-name col-mb-12 col-9">
+                {% if logo_url %}
+                <a id="logo" href="/"><img src="{{ logo_url }}" alt="{{ site_title }}"></a>
+                {% else %}
+                <a id="logo" href="/">{{ site_title }}</a>
+                <p class="description">{{ site_description }}</p>
+                {% endif %}
+            </div>
+            <div class="site-search col-3 kit-hidden-tb">
+                <form id="search" method="post" action="/" role="search">
+                    <label for="s" class="sr-only">搜索关键字</label>
+                    <input type="text" id="s" name="s" class="text" placeholder="输入关键字搜索">
+                    <button type="submit" class="submit">搜索</button>
+                </form>
+            </div>
+            <div class="col-mb-12">
+                <nav id="nav-menu" class="clearfix" role="navigation">
+                    {% if nav_index %}<a class="current" href="/">首页</a>{% else %}<a href="/">首页</a>{% endif %}
+                    {% for p in pages %}
+                    {% if nav_slug == p.slug %}
+                    <a class="current" href="{{ p.url }}" title="{{ p.title }}">{{ p.title }}</a>
+                    {% else %}
+                    <a href="{{ p.url }}" title="{{ p.title }}">{{ p.title }}</a>
+                    {% endif %}
+                    {% endfor %}
+                </nav>
+            </div>
+        </div>
+    </div>
+</header>
+<div id="body">
+    <div class="container">
+        <div class="row">
+            {% block main %}{% endblock %}
+            {% block sidebar %}
+            <div class="col-mb-12 col-offset-1 col-3 kit-hidden-tb" id="secondary" role="complementary">
+                {{ sidebar | safe }}
+            </div>
+            {% endblock %}
+        </div>
+    </div>
+</div>
+<footer id="footer" role="contentinfo">
+    &copy; {{ year }} <a href="/">{{ site_title }}</a>.
+    由 <a href="https://typecho.org">Typecho</a> 强力驱动.
+    {{ plugin_footer | safe }}
+</footer>
+</body>
+</html>

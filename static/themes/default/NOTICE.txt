@@ -1,0 +1,2 @@
+本目录的 grid.css、style.css 与 img/ 来自 Typecho 1.2.1 默认主题 usr/themes/default/，许可证为 GNU GPL v2（见同目录 LICENSE.txt）。
+normalize.css 是 normalize.css v8.0.0，许可证为 MIT。
