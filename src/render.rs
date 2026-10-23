@@ -19,6 +19,9 @@ pub struct Chrome<'a> {
     pub viewer_uid: i64,
     pub viewer_auth: &'a str,
     pub page_url: &'a str,
+    /// 页脚打点用的归档 id：文章/页面为 `(Some(cid), None)`，分类/标签为 `(None, Some(mid))`，
+    /// 首页为 `(None, Some(0))`，其余 `(None, None)`。对齐 `Access_Core::parseArchive`。
+    pub access_ids: (Option<i64>, Option<i64>),
 }
 
 const EMBEDDED: &[(&str, &str)] = &[
@@ -541,7 +544,7 @@ fn shell(
         "sidebar": sidebar_html(chrome),
         "show_archive_title": false,
         "plugin_header": crate::plugins::public_header(site),
-        "plugin_footer": crate::plugins::public_footer(site),
+        "plugin_footer": crate::plugins::public_footer_page(site, chrome.access_ids.0, chrome.access_ids.1),
     })
 }
 

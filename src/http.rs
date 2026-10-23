@@ -153,6 +153,12 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     if path == "/access/log/track.gif" {
         return track_gif(state, &site, &parts.method, &query, &parts.headers, &cookies, &request_path, now).await;
     }
+    if path == "/access/ip.json" {
+        return access_ip_json(state, &site, &query, &cookies).await;
+    }
+    if path == "/access/log/delete.json" {
+        return access_delete_json(state, &site, &cookies, &bytes).await;
+    }
     if path == "/action/xmlrpc" {
         return crate::xmlrpc::handle(
             &state.db,
@@ -746,6 +752,7 @@ async fn search_like(
             ),
         )));
     }
+    log_archive_visit(ctx, None, None).await;
     let chrome = chrome(ctx, ctx.cookies.clone());
     let html = ctx
         .state
@@ -867,7 +874,17 @@ async fn show_list(
             ),
         )));
     }
-    let chrome = chrome(ctx, ctx.cookies.clone());
+    // 后端模式覆盖全部 Archive（对齐 `Widget_Archive::beforeRender`）：首页 mid 记 0，
+    // 分类/标签记首个 mid，其余留空。管理员不记。
+    let access_mid = match &filter {
+        ListFilter::Index => Some(0),
+        ListFilter::Category(mids) => mids.first().copied(),
+        ListFilter::Tag(mid) => Some(*mid),
+        _ => None,
+    };
+    log_archive_visit(ctx, None, access_mid).await;
+    let mut chrome = chrome(ctx, ctx.cookies.clone());
+    chrome.access_ids = (None, access_mid);
     let html = ctx.state.theme.render_list(
         &chrome,
         &heading,
@@ -1033,7 +1050,8 @@ async fn show_single(
     } else {
         (None, None)
     };
-    let chrome = chrome(ctx, cookies.clone());
+    let mut chrome = chrome(ctx, cookies.clone());
+    chrome.access_ids = (Some(post.cid), None);
     let reply_to = ctx
         .query
         .get("replyTo")
@@ -1081,34 +1099,8 @@ async fn show_single(
             let next = crate::access::mark_viewed(seen, post.cid);
             push_cookie(&mut headers, &cookie_name, &next, None);
         }
-        if crate::plugins::is_active(ctx.site, "Access") {
-            let write_type =
-                crate::plugins::plugin_setting(ctx.site, "Access", "writeType", "0");
-            // 后端模式才在这里写库；管理员跳过，对齐 PHP `writeLogs` 开头的 `isAdmin` return。
-            if write_type.trim() != "1" && !ctx.viewer_is_admin {
-                let ua = ctx
-                    .headers
-                    .get(header::USER_AGENT)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                let referer = ctx
-                    .headers
-                    .get(header::REFERER)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                let _ = crate::access::log_visit(
-                    &ctx.state.db,
-                    ua,
-                    ctx.page_url,
-                    &client_ip(ctx.headers),
-                    referer,
-                    ctx.now,
-                    Some(post.cid),
-                    None,
-                )
-                .await;
-            }
-        }
+        // 后端模式记一条访问日志（cid 为当前内容），前端模式靠打点，不双写。
+        log_archive_visit(ctx, Some(post.cid), None).await;
     }
     Ok(Step::Done(html_response(ctx, status, html, &headers)))
 }
@@ -1134,16 +1126,7 @@ async fn track_gif(
     if write_type.trim() == "1" {
         // 表可能被外部删掉（如 isDrop=0 后又手动启用），best-effort 补上，保证打点不 500。
         let _ = crate::access::ensure_table(&state.db).await;
-        let root = auth::site_root(
-            &state.cfg.site_url,
-            &links::site_base(&state.cfg.site_url, site),
-        );
-        let is_admin = auth::session_user(&state.db, &root, cookies)
-            .await
-            .ok()
-            .flatten()
-            .is_some_and(|user| user.pass("administrator"));
-        if !is_admin {
+        if !access_admin(state, site, cookies).await {
             let url = query.get("u").map(String::as_str).unwrap_or(request_path);
             let cid = query.get("cid").and_then(|s| s.parse::<i64>().ok());
             let mid = query.get("mid").and_then(|s| s.parse::<i64>().ok());
@@ -1174,6 +1157,111 @@ async fn track_gif(
         .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate")
         .body(Body::from(crate::access::TRACK_GIF))
         .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败")))
+}
+
+/// Access JSON 接口的管理员门禁，对齐 PHP `Access_Action::checkAuth`。
+async fn access_admin(
+    state: &AppState,
+    site: &crate::model::Site,
+    cookies: &HashMap<String, String>,
+) -> bool {
+    let root = auth::site_root(
+        &state.cfg.site_url,
+        &links::site_base(&state.cfg.site_url, site),
+    );
+    auth::session_user(&state.db, &root, cookies)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|user| user.pass("administrator"))
+}
+
+fn json_response(value: serde_json::Value) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .body(Body::from(value.to_string()))
+        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))
+}
+
+/// `GET /access/ip.json?ip=`：仅管理员。未内置归属库、不调外部接口：
+/// 本地可判定的（回环/内网等）返回 `code 0`，公网地址与非法输入返回 `code 100` 明错，
+/// 不假造地理数据（对齐 PHP 查不到时的错误分支语义）。
+async fn access_ip_json(
+    state: &AppState,
+    site: &crate::model::Site,
+    query: &HashMap<String, String>,
+    cookies: &HashMap<String, String>,
+) -> anyhow::Result<Response> {
+    if !crate::plugins::is_active(site, "Access") {
+        return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
+    }
+    if !access_admin(state, site, cookies).await {
+        return Ok(json_response(serde_json::json!({"code": 100, "data": "Access Denied"})));
+    }
+    let raw = query.get("ip").map(String::as_str).unwrap_or("");
+    let Ok(addr) = raw.trim().parse::<std::net::Ipv4Addr>() else {
+        return Ok(json_response(serde_json::json!({"code": 100, "data": "解析ip失败"})));
+    };
+    let label = if addr.is_loopback() {
+        "回环地址"
+    } else if addr.is_private() {
+        "内网地址"
+    } else if addr.is_link_local() {
+        "链路本地地址"
+    } else if addr.is_multicast() {
+        "组播地址"
+    } else if addr.is_broadcast() || addr.is_unspecified() || addr.is_documentation() {
+        "保留地址"
+    } else {
+        return Ok(json_response(serde_json::json!({
+            "code": 100,
+            "data": "未内置 IP 归属库，公网地址无法查询"
+        })));
+    };
+    Ok(json_response(
+        serde_json::json!({"code": 0, "data": format!("{addr} {label}")}),
+    ))
+}
+
+/// `/access/log/delete.json`：仅管理员，JSON 体为 id 数组或 `{"ids": [...]}`，
+/// 对齐 PHP `Action::deleteLogs`（读原始输入、逐个删除、回 `code`）。
+async fn access_delete_json(
+    state: &AppState,
+    site: &crate::model::Site,
+    cookies: &HashMap<String, String>,
+    body: &[u8],
+) -> anyhow::Result<Response> {
+    if !crate::plugins::is_active(site, "Access") {
+        return Ok(plain(StatusCode::NOT_FOUND, "请求的地址不存在"));
+    }
+    if !access_admin(state, site, cookies).await {
+        return Ok(json_response(serde_json::json!({"code": 100, "data": "Access Denied"})));
+    }
+    let ids: Vec<i64> = match serde_json::from_slice::<serde_json::Value>(body) {
+        Ok(serde_json::Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)))
+            .collect(),
+        Ok(serde_json::Value::Object(map)) => match map.get("ids") {
+            Some(serde_json::Value::Array(items)) => items
+                .iter()
+                .filter_map(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)))
+                .collect(),
+            _ => {
+                return Ok(json_response(
+                    serde_json::json!({"code": 100, "data": "params invalid"}),
+                ))
+            }
+        },
+        _ => {
+            return Ok(json_response(serde_json::json!({"code": 100, "data": "params invalid"})))
+        }
+    };
+    match crate::access::delete_logs(&state.db, &ids).await {
+        Ok(_) => Ok(json_response(serde_json::json!({"code": 0}))),
+        Err(_) => Ok(json_response(serde_json::json!({"code": 100, "data": "删除失败"}))),
+    }
 }
 
 async fn feed_like(ctx: &ReqCtx<'_>, params: &HashMap<String, String>) -> anyhow::Result<Step> {
@@ -1726,10 +1814,48 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
         viewer_uid: ctx.viewer_uid,
         viewer_auth: ctx.viewer_auth,
         page_url: ctx.page_url,
+        access_ids: (None, None),
     }
 }
 
+/// 后端写入模式的归档访问日志（对齐 `Plugin::backend` + `writeLogs` 的 `isAdmin` 跳过）。
+/// 调用方按 `parseArchive` 语义传入 `cid`/`mid`；前端模式（`writeType=1`）靠打点，不双写。
+async fn log_archive_visit(ctx: &ReqCtx<'_>, cid: Option<i64>, mid: Option<i64>) {
+    if *ctx.method != Method::GET {
+        return;
+    }
+    if !crate::plugins::is_active(ctx.site, "Access") || ctx.viewer_is_admin {
+        return;
+    }
+    if crate::plugins::plugin_setting(ctx.site, "Access", "writeType", "0").trim() == "1" {
+        return;
+    }
+    let ua = ctx
+        .headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let referer = ctx
+        .headers
+        .get(header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let _ = crate::access::log_visit(
+        &ctx.state.db,
+        ua,
+        ctx.page_url,
+        &client_ip(ctx.headers),
+        referer,
+        ctx.now,
+        cid,
+        mid,
+    )
+    .await;
+}
+
 async fn not_found(ctx: &ReqCtx<'_>) -> anyhow::Result<Response> {
+    // 404 归档同样记（`parseArchive` 明确处理 404 分支）。
+    log_archive_visit(ctx, None, None).await;
     let chrome = chrome(ctx, ctx.cookies.clone());
     let html = ctx.state.theme.render_404(&chrome)?;
     Ok(html_response(ctx, StatusCode::NOT_FOUND, html, &HeaderMap::new()))

@@ -76,6 +76,18 @@ async fn seed(db: &Db) {
         .execute(&db.pool)
         .await
         .unwrap();
+    sqlx::query(
+        r#"INSERT INTO "typecho_metas"
+        ("mid","name","slug","type","description","count","order","parent")
+        VALUES (1, '随笔', 'notes', 'category', '', 1, 0, 0)"#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    sqlx::query(r#"INSERT INTO "typecho_relationships" ("cid","mid") VALUES (1, 1)"#)
+        .execute(&db.pool)
+        .await
+        .unwrap();
     for (name, value) in [
         ("title", "测试博客"),
         ("description", "描述"),
@@ -219,6 +231,14 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
             .await
             .unwrap()
     };
+    let last_meta = || async {
+        sqlx::query_scalar::<_, Option<i64>>(
+            r#"SELECT meta_id FROM "typecho_access_log" ORDER BY id DESC LIMIT 1"#,
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap()
+    };
     assert_eq!(log_count().await, 0);
 
     // 默认后端模式（writeType=0）：track.gif 只回像素、不写库，对齐 PHP `Action::writeLogs`。
@@ -228,10 +248,23 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
     assert!(bytes.starts_with(b"GIF89a"), "{bytes:?}");
     assert_eq!(log_count().await, 0);
 
-    // 后端写入模式默认不注入前端脚本。
+    // A2：后端模式覆盖全部 Archive。首页记一行，mid=0（对齐 parseArchive 的 index 分支）。
     let (status, home, _, _) = get(&app, "/").await;
     assert_eq!(status, StatusCode::OK);
     assert!(!home.contains("window.Access.track"), "{home}");
+    assert_eq!(log_count().await, 1);
+    assert_eq!(last_meta().await, Some(0));
+
+    // A2：分类页记一行，mid=分类 mid。
+    let (status, cat, _, _) = get(&app, "/category/notes/").await;
+    assert_eq!(status, StatusCode::OK, "{cat}");
+    assert_eq!(log_count().await, 2);
+    assert_eq!(last_meta().await, Some(1));
+
+    // A2：404 归档同样记一行。
+    let (status, _, _, _) = get(&app, "/no-such-page-xyz").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(log_count().await, 3);
 
     // 浏览数：首次 +1，带 cookie 重复访问不再加。
     let (status, single, _, headers) = get(&app, "/archives/1/").await;
@@ -248,7 +281,7 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
         .collect::<Vec<_>>()
         .join("; ");
     // 后端模式下匿名文章页访问记一行日志（对齐 `Plugin::backend`）。
-    assert_eq!(log_count().await, 1);
+    assert_eq!(log_count().await, 4);
 
     // 管理员访问不记日志（对齐 PHP `writeLogs` 开头的 `isAdmin` return），浏览数照常按 cookie 去重。
     let (status, _, _, _) = call(
@@ -257,22 +290,32 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(log_count().await, 1);
+    assert_eq!(log_count().await, 4);
     assert_eq!(tiebidli::access::get_views(&db, 1).await, 2);
 
     // 切到前端写入后页脚注入打点。
     let (path, referer) = sign_action(&db, "/action/plugins-edit?config=Access").await;
     let (status, _, _) = post_form(&app, &path, "pageSize=10&isDrop=1&writeType=1&canAnalytize=1", &cookie, referer).await;
     assert_eq!(status, StatusCode::FOUND);
+
+    // A1：页脚脚本带上 cid/mid。首页 mid=0，文章页 cid=1，分类页 mid=1。
     let (status, home, _, _) = get(&app, "/").await;
     assert_eq!(status, StatusCode::OK);
     assert!(home.contains("window.Access.track"), "{home}");
     assert!(home.contains("/access/log/track.gif"), "{home}");
+    assert!(home.contains("mid=0"), "{home}");
+    let (status, single, _, _) = get(&app, "/archives/1/").await;
+    assert_eq!(status, StatusCode::OK, "{single}");
+    assert!(single.contains("cid=1"), "{single}");
+    assert!(single.contains("mid="), "{single}");
+    let (status, cat, _, _) = get(&app, "/category/notes/").await;
+    assert_eq!(status, StatusCode::OK, "{cat}");
+    assert!(cat.contains("mid=1"), "{cat}");
 
     // 前端模式下 track.gif 写库。
     let (status, _, _, _) = get(&app, "/access/log/track.gif?u=/archives/1/&cid=1&mid=0&rand=456").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(log_count().await, 2);
+    assert_eq!(log_count().await, 5);
     let cid: Option<i64> = sqlx::query_scalar(r#"SELECT content_id FROM "typecho_access_log" WHERE content_id = 1 LIMIT 1"#)
         .fetch_one(&db.pool)
         .await
@@ -286,21 +329,20 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(log_count().await, 2);
+    assert_eq!(log_count().await, 5);
 
     // 前端模式 + 去重 cookie：重访文章页既不加浏览数也不记日志。
+    // （A1 复查那次无 cookie 访问已把 views 记到 3，这里带旧 cookie 重访不再加。）
     let (status, _, _, _) = call(
         &app,
         Request::builder().uri("/archives/1/").header("cookie", &views_cookie).body(Body::empty()).unwrap(),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(tiebidli::access::get_views(&db, 1).await, 2);
-    assert_eq!(log_count().await, 2);
+    assert_eq!(tiebidli::access::get_views(&db, 1).await, 3);
+    assert_eq!(log_count().await, 5);
 
-    // 精简控制台可见日志与 PV。
-    let (path, referer) = sign_action(&db, "/admin/access-console.php").await;
-    let _ = (path, referer);
+    // B：控制台默认是访问日志 Tab。
     let (status, console, _, _) = call(
         &app,
         Request::builder().uri("/admin/access-console.php").header("cookie", &cookie).body(Body::empty()).unwrap(),
@@ -308,6 +350,142 @@ async fn access_track_gif_logs_and_views_count_once_per_cookie() {
     .await;
     assert_eq!(status, StatusCode::OK, "{console}");
     assert!(console.contains("访问日志"), "{console}");
+    assert!(console.contains("访问概览"), "{console}");
+    assert!(console.contains("受访地址"), "{console}");
+
+    // B：访问概览 Tab 有今日/昨日/总计与来源、热门、小时表。
+    let (status, overview, _, _) = call(
+        &app,
+        Request::builder().uri("/admin/access-console.php?action=overview").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{overview}");
+    assert!(overview.contains("访问数表格"), "{overview}");
+    assert!(overview.contains("今日"), "{overview}");
+    assert!(overview.contains("昨日"), "{overview}");
+    assert!(overview.contains("总计"), "{overview}");
+    assert!(overview.contains("浏览量(PV)"), "{overview}");
+    assert!(overview.contains("来源域名"), "{overview}");
+    assert!(overview.contains("来源页"), "{overview}");
+    assert!(overview.contains("热门内容"), "{overview}");
+    assert!(overview.contains("今日图表"), "{overview}");
+
+    // B：日志筛选（按 IP/文章/路由）可用。
+    for path in [
+        "/admin/access-console.php?action=logs&filter=ip&ip=0.0.0.0&type=3",
+        "/admin/access-console.php?action=logs&filter=post&cid=1&type=3",
+        "/admin/access-console.php?action=logs&filter=path&path=/&type=3",
+    ] {
+        let (status, page, _, _) = call(
+            &app,
+            Request::builder().uri(path).header("cookie", &cookie).body(Body::empty()).unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{path} {page}");
+        assert!(page.contains("取消筛选"), "{path}");
+    }
+
+    // B：delete.json 批量删除（管理员，无需 `_`，与 PHP 一致）。
+    let ids: Vec<i64> =
+        sqlx::query_scalar(r#"SELECT id FROM "typecho_access_log" ORDER BY id ASC LIMIT 2"#)
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(ids.len(), 2);
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/access/log/delete.json")
+            .header("cookie", &cookie)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&ids).unwrap()))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("\"code\":0"), "{body}");
+    assert_eq!(log_count().await, 3);
+    // 非法体与未登录都回明确错误码。
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/access/log/delete.json")
+            .header("cookie", &cookie)
+            .header("content-type", "application/json")
+            .body(Body::from("not json"))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("\"code\":100"), "{body}");
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/access/log/delete.json")
+            .header("content-type", "application/json")
+            .body(Body::from("[1]"))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("Access Denied"), "{body}");
+
+    // B：ip.json。本地可判定回 code 0，公网/非法回明确错误，不假造归属。
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().uri("/access/ip.json?ip=127.0.0.1").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("\"code\":0"), "{body}");
+    for (path, want) in [
+        ("/access/ip.json?ip=8.8.8.8", "未内置 IP 归属库"),
+        ("/access/ip.json?ip=bogus", "解析ip失败"),
+    ] {
+        let (status, body, _, _) = call(
+            &app,
+            Request::builder().uri(path).header("cookie", &cookie).body(Body::empty()).unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{path} {body}");
+        assert!(body.contains("\"code\":100"), "{path} {body}");
+        assert!(body.contains(want), "{path} {body}");
+    }
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().uri("/access/ip.json?ip=127.0.0.1").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("Access Denied"), "{body}");
+}
+
+#[tokio::test]
+async fn access_is_drop_zero_drops_table_on_deactivate() {
+    // `isDrop=0`（删除）时停用删日志表，`isDrop=1`（保留）时留表，与 PHP 配置一致。
+    let (app, db) = boot().await;
+    let cookie = login(&app).await;
+    activate(&app, &db, &cookie, "Access").await;
+    assert!(tiebidli::access::table_exists(&db).await);
+
+    let (path, referer) = sign_action(&db, "/action/plugins-edit?config=Access").await;
+    let (status, _, _) = post_form(&app, &path, "pageSize=10&isDrop=0&writeType=0&canAnalytize=1", &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    let (path, referer) = sign_action(&db, "/action/plugins-edit?deactivate=Access").await;
+    let (status, _, _) = post_form(&app, &path, "", &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(!tiebidli::access::table_exists(&db).await);
+
+    // 重新启用建回表；默认 `isDrop=1` 停用保留表。
+    activate(&app, &db, &cookie, "Access").await;
+    assert!(tiebidli::access::table_exists(&db).await);
+    let (path, referer) = sign_action(&db, "/action/plugins-edit?deactivate=Access").await;
+    let (status, _, _) = post_form(&app, &path, "", &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(tiebidli::access::table_exists(&db).await);
 }
 
 #[tokio::test]

@@ -59,7 +59,9 @@ pub trait Plugin: Send + Sync {
         &[]
     }
     fn bindings(&self) -> &'static [Binding];
-    fn snippet(&self, point: Point, site: &Site) -> String;
+    /// 公开页页脚脚本可按当前归档带 `cid`/`mid`（对齐 `Access_Core::parseArchive`）。
+    /// 不需要归档上下文的插件直接忽略 `arch`。
+    fn snippet(&self, point: Point, site: &Site, arch: (Option<i64>, Option<i64>)) -> String;
     fn filter_content(&self, _site: &Site, html: &str) -> String {
         html.to_string()
     }
@@ -107,7 +109,7 @@ impl Plugin for HelloWorld {
             php_callback: Some(HELLO_CALLBACK),
         }]
     }
-    fn snippet(&self, point: Point, site: &Site) -> String {
+    fn snippet(&self, point: Point, site: &Site, _arch: (Option<i64>, Option<i64>)) -> String {
         match point {
             Point::AdminNavBar => {
                 let word = setting(site, self.name(), "word", "Hello World");
@@ -146,7 +148,7 @@ impl Plugin for Sitemap {
     fn bindings(&self) -> &'static [Binding] {
         &[]
     }
-    fn snippet(&self, _point: Point, _site: &Site) -> String {
+    fn snippet(&self, _point: Point, _site: &Site, _arch: (Option<i64>, Option<i64>)) -> String {
         String::new()
     }
 }
@@ -205,11 +207,11 @@ impl Plugin for Access {
             php_callback: Some(r"TypechoPlugin\Access\Plugin::frontend"),
         }]
     }
-    fn snippet(&self, point: Point, site: &Site) -> String {
+    fn snippet(&self, point: Point, site: &Site, arch: (Option<i64>, Option<i64>)) -> String {
         match point {
             Point::PublicFooter => {
                 let write_type = setting(site, self.name(), "writeType", "0");
-                crate::access::frontend_snippet(site, write_type.trim())
+                crate::access::frontend_snippet(site, write_type.trim(), arch.0, arch.1)
             }
             _ => String::new(),
         }
@@ -241,7 +243,7 @@ impl Plugin for Links {
     fn bindings(&self) -> &'static [Binding] {
         &[]
     }
-    fn snippet(&self, _point: Point, _site: &Site) -> String {
+    fn snippet(&self, _point: Point, _site: &Site, _arch: (Option<i64>, Option<i64>)) -> String {
         String::new()
     }
 }
@@ -348,15 +350,24 @@ pub fn personal_html(site: &Site) -> String {
 }
 
 pub fn public_header(site: &Site) -> String {
-    snippets(site, Point::PublicHeader)
+    snippets(site, Point::PublicHeader, (None, None))
 }
 
 pub fn public_footer(site: &Site) -> String {
-    snippets(site, Point::PublicFooter)
+    snippets(site, Point::PublicFooter, (None, None))
+}
+
+/// 带当前归档 `cid`/`mid` 的页脚钩子（文章/页面传 cid；分类/标签传 mid；首页 mid 为 0）。
+pub fn public_footer_page(
+    site: &Site,
+    cid: Option<i64>,
+    mid: Option<i64>,
+) -> String {
+    snippets(site, Point::PublicFooter, (cid, mid))
 }
 
 pub fn admin_nav(site: &Site) -> String {
-    snippets(site, Point::AdminNavBar)
+    snippets(site, Point::AdminNavBar, (None, None))
 }
 
 pub fn filter_content(site: &Site, html: &str) -> String {
@@ -504,7 +515,7 @@ fn is_activated(site: &Site, name: &str) -> bool {
         .any(|item| item == name)
 }
 
-fn snippets(site: &Site, point: Point) -> String {
+fn snippets(site: &Site, point: Point, arch: (Option<i64>, Option<i64>)) -> String {
     let names = activated_names(site.get("plugins"));
     let mut html = String::new();
     for plugin in builtin_plugins() {
@@ -512,7 +523,7 @@ fn snippets(site: &Site, point: Point) -> String {
             continue;
         }
         if plugin.bindings().iter().any(|binding| binding.point == point) {
-            html.push_str(&plugin.snippet(point, site));
+            html.push_str(&plugin.snippet(point, site, arch));
         }
     }
     html
