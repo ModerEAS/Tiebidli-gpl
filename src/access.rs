@@ -5,7 +5,10 @@
 //! 按 `u/cid/mid/rand` 记录后返回 1x1 GIF；前端写入模式（`writeType=1`）
 //! 在页脚注入 `window.Access.track`；浏览数以 `contents.views` 为准，
 //! cookie 去重键对齐 `extend_contents_views`。
+//! 入库列对齐 `Access_Core::writeLogs`：UA 解析（browser/os/robot）、
+//! 入口页（entrypoint，见 `resolve_entrypoint`）与 referer 双列。
 
+use crate::access_ua;
 use crate::db::{col_i64, col_str, Db, Dialect};
 use crate::links;
 use crate::model::Site;
@@ -20,6 +23,10 @@ pub const TRACK_GIF: &[u8] = &[
 /// 浏览去重 cookie 名（需调用方按站点根加前缀）。
 pub const VIEWS_COOKIE: &str = "extend_contents_views";
 
+/// 入口页 cookie 名（对齐 `Access_Core::getEntryPoint` 的 `__typecho_access_entrypoint`，
+/// 调用方按惯例经 `auth::cookie_name(siteUrl, key)` 加前缀）。
+pub const ENTRYPOINT_COOKIE: &str = "__typecho_access_entrypoint";
+
 #[derive(Debug, Clone)]
 pub struct AccessLog {
     pub id: i64,
@@ -32,12 +39,11 @@ pub struct AccessLog {
     pub meta_id: Option<i64>,
 }
 
-/// 激活时确保日志表存在（SQLite/MySQL 方言分支）。
-pub async fn ensure_table(db: &Db) -> Result<(), sqlx::Error> {
-    let t = db.table("access_log");
-    let create = match db.dialect {
+/// `access_log` 建表 DDL（SQLite/MySQL 方言分支，单测可直接断言字符串）。
+pub fn create_table_sql(dialect: &Dialect, table: &str) -> String {
+    match dialect {
         Dialect::Sqlite => format!(
-            "CREATE TABLE IF NOT EXISTS {t} (\
+            "CREATE TABLE IF NOT EXISTS {table} (\
              id INTEGER PRIMARY KEY AUTOINCREMENT, \
              ua TEXT DEFAULT '', browser_id TEXT DEFAULT '', browser_version TEXT DEFAULT '', \
              os_id TEXT DEFAULT '', os_version TEXT DEFAULT '', url TEXT DEFAULT '', \
@@ -48,7 +54,7 @@ pub async fn ensure_table(db: &Db) -> Result<(), sqlx::Error> {
              robot INTEGER DEFAULT 0, robot_id TEXT DEFAULT '', robot_version TEXT DEFAULT '')"
         ),
         Dialect::Mysql => format!(
-            "CREATE TABLE IF NOT EXISTS {t} (\
+            "CREATE TABLE IF NOT EXISTS {table} (\
              id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, \
              ua VARCHAR(512) DEFAULT '', browser_id VARCHAR(32) DEFAULT '', \
              browser_version VARCHAR(32) DEFAULT '', os_id VARCHAR(32) DEFAULT '', \
@@ -61,8 +67,22 @@ pub async fn ensure_table(db: &Db) -> Result<(), sqlx::Error> {
              robot TINYINT(1) DEFAULT 0, robot_id VARCHAR(32) DEFAULT '', \
              robot_version VARCHAR(32) DEFAULT '')"
         ),
-    };
-    sqlx::query(&create).execute(&db.pool).await?;
+    }
+}
+
+/// `access_log` 辅助索引 DDL（MySQL 对 `IF NOT EXISTS` 支持不一，调用方忽略建失败）。
+pub fn create_index_sql(dialect: &Dialect, prefix: &str, name: &str, cols: &str) -> String {
+    let t = format!("{prefix}access_log");
+    match dialect {
+        Dialect::Sqlite => format!("CREATE INDEX IF NOT EXISTS \"{t}_{name}\" ON {t} ({cols})"),
+        Dialect::Mysql => format!("CREATE INDEX {t}_{name} ON {t} ({cols})"),
+    }
+}
+
+/// 激活时确保日志表存在（SQLite/MySQL 方言分支）。
+pub async fn ensure_table(db: &Db) -> Result<(), sqlx::Error> {
+    let t = db.table("access_log");
+    sqlx::query(&create_table_sql(&db.dialect, &t)).execute(&db.pool).await?;
     // 索引建失败不阻断启用（MySQL 对 IF NOT EXISTS 支持不一）。
     for (name, cols) in [
         ("time", "time"),
@@ -70,14 +90,9 @@ pub async fn ensure_table(db: &Db) -> Result<(), sqlx::Error> {
         ("content_id", "content_id"),
         ("meta_id", "meta_id"),
     ] {
-        let idx = match db.dialect {
-            Dialect::Sqlite => format!(
-                "CREATE INDEX IF NOT EXISTS \"{p}access_log_{name}\" ON {t} ({cols})",
-                p = db.prefix,
-            ),
-            Dialect::Mysql => format!("CREATE INDEX {p}access_log_{name} ON {t} ({cols})", p = db.prefix),
-        };
-        let _ = sqlx::query(&idx).execute(&db.pool).await;
+        let _ = sqlx::query(&create_index_sql(&db.dialect, &db.prefix, name, cols))
+            .execute(&db.pool)
+            .await;
     }
     Ok(())
 }
@@ -109,6 +124,7 @@ pub async fn table_exists(db: &Db) -> bool {
 }
 
 /// 写入一条访问日志。`u` 为前端传来的受访地址（含 path+query+hash）。
+/// 入库列对齐 `Access_Core::writeLogs`：UA 解析、entrypoint 与 referer 双列。
 #[allow(clippy::too_many_arguments)]
 pub async fn log_visit(
     db: &Db,
@@ -116,25 +132,35 @@ pub async fn log_visit(
     url: &str,
     ip: &str,
     referer: &str,
+    entrypoint: &str,
     now: i64,
     cid: Option<i64>,
     mid: Option<i64>,
 ) -> Result<(), sqlx::Error> {
     let (path, query) = split_url(url);
     let ip_num = ip_to_int(ip);
+    let parsed = access_ua::parse(ua);
     let sql = format!(
-        "INSERT INTO {} (ua, url, path, query_string, ip, referer, referer_domain, time, content_id, meta_id, robot) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        "INSERT INTO {} (ua, browser_id, browser_version, os_id, os_version, \
+         url, path, query_string, ip, referer, referer_domain, entrypoint, entrypoint_domain, \
+         time, content_id, meta_id, robot, robot_id, robot_version) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         db.table("access_log")
     );
     let mut q = sqlx::query(&sql)
         .bind(trunc(ua, 512))
+        .bind(trunc(&parsed.browser_id, 32))
+        .bind(trunc(&parsed.browser_version, 32))
+        .bind(trunc(&parsed.os_id, 32))
+        .bind(trunc(&parsed.os_version, 32))
         .bind(trunc(url, 255))
         .bind(trunc(&path, 255))
         .bind(trunc(&query, 255))
         .bind(ip_num)
         .bind(trunc(referer, 255))
         .bind(trunc(&domain_of(referer), 100))
+        .bind(trunc(entrypoint, 255))
+        .bind(trunc(&domain_of(entrypoint), 100))
         .bind(now);
     match cid {
         Some(id) => q = q.bind(id),
@@ -144,6 +170,10 @@ pub async fn log_visit(
         Some(id) => q = q.bind(id),
         None => q = q.bind(None::<i64>),
     }
+    q = q
+        .bind(i64::from(parsed.robot))
+        .bind(trunc(&parsed.robot_id, 32))
+        .bind(trunc(&parsed.robot_version, 32));
     q.execute(&db.pool).await?;
     Ok(())
 }
@@ -171,10 +201,27 @@ fn trunc(s: &str, max: usize) -> String {
 
 /// 取 URL 的 host（无则空串）。Rust 新行用它填 `referer_domain`，旧 PHP 行本来就有。
 fn domain_of(url: &str) -> String {
+    host_of(url).unwrap_or_default()
+}
+
+fn host_of(url: &str) -> Option<String> {
     url::Url::parse(url)
         .ok()
-        .and_then(|u| u.host_str().map(str::to_string))
-        .unwrap_or_default()
+        .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
+}
+
+/// 对齐 `Access_Core::getEntryPoint`：优先 Referer，空则读 entrypoint cookie；
+/// 与站点同 host 视为站内（置空）；外链返回 `(entrypoint, true)` 提示调用方写 cookie。
+///
+/// `site_base` 为站点根（如 `http://test.local`），`cookie` 为已加前缀的
+/// `__typecho_access_entrypoint` 现值。
+pub fn resolve_entrypoint(site_base: &str, referer: &str, cookie: &str) -> (String, bool) {
+    let mut entrypoint = if referer.is_empty() { cookie } else { referer };
+    if !entrypoint.is_empty() && host_of(entrypoint) == host_of(site_base) {
+        entrypoint = "";
+    }
+    let needs_set = !entrypoint.is_empty() && entrypoint != cookie;
+    (entrypoint.to_string(), needs_set)
 }
 
 /// 读取 `contents.views`，列缺失时返回 0（不抛错）。
@@ -366,6 +413,71 @@ pub async fn delete_logs(db: &Db, ids: &[i64]) -> Result<u64, sqlx::Error> {
     Ok(q.execute(&db.pool).await?.rows_affected())
 }
 
+/// KeyCDN 归属查询基址（对齐 `Action::ip` 的 `tools.keycdn.com/geo.json`）。
+pub const KEYCDN_BASE: &str = "https://tools.keycdn.com";
+
+/// 请求 KeyCDN，成功返回 `"{country} {city}"`（trim 过）。
+/// `base` 可注入（单测指向本地 mock），生产传 [`KEYCDN_BASE`]。
+pub async fn keycdn_lookup(base: &str, ip: &str) -> Option<String> {
+    let url = format!("{base}/geo.json?host={ip}");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .ok()?;
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = serde_json::from_str(&resp.text().await.ok()?).ok()?;
+    if body.get("status")?.as_str()? != "success" {
+        return None;
+    }
+    let geo = body.pointer("/data/geo")?;
+    let country = geo.get("country_name")?.as_str().unwrap_or("");
+    let city = geo.get("city")?.as_str().filter(|s| !s.is_empty());
+    let label = match city {
+        Some(city) => format!("{country} {city}"),
+        None => country.to_string(),
+    };
+    let label = label.trim().to_string();
+    if label.is_empty() { None } else { Some(label) }
+}
+
+/// 对齐 `Action::ip`：本地可判定（回环/内网等）直接回 `code 0`；
+/// 公网走 KeyCDN，成功 `code 0`，都失败 `code 100`（与 PHP 相近文案）。
+pub async fn geo_for_ip_with(ip_raw: &str, keycdn_base: &str) -> (i64, String) {
+    let Ok(addr) = ip_raw.trim().parse::<std::net::Ipv4Addr>() else {
+        return (100, "解析ip失败".to_string());
+    };
+    let label = if addr.is_loopback() {
+        "回环地址"
+    } else if addr.is_private() {
+        "内网地址"
+    } else if addr.is_link_local() {
+        "链路本地地址"
+    } else if addr.is_multicast() {
+        "组播地址"
+    } else if addr.is_broadcast() || addr.is_unspecified() || addr.is_documentation() {
+        "保留地址"
+    } else {
+        let ip = addr.to_string();
+        return match keycdn_lookup(keycdn_base, &ip).await {
+            Some(geo) => (0, geo),
+            None => (
+                100,
+                "很抱歉，ipip.net查询无结果，同时你的服务器无法连接fallback接口(tools.keycdn.com)"
+                    .to_string(),
+            ),
+        };
+    };
+    (0, format!("{addr} {label}"))
+}
+
+/// 生产入口：KeyCDN 基址固定为 [`KEYCDN_BASE`]。
+pub async fn geo_for_ip(ip_raw: &str) -> (i64, String) {
+    geo_for_ip_with(ip_raw, KEYCDN_BASE).await
+}
+
 fn map_log(row: &sqlx::any::AnyRow) -> AccessLog {
     AccessLog {
         id: col_i64(row, "id").unwrap_or(0),
@@ -410,87 +522,98 @@ fn day_bounds(now: i64, tz_secs: i64, days_ago: i64) -> (i64, i64) {
     (start, start + 86400 - 1)
 }
 
-async fn count_between(db: &Db, start: i64, end: i64) -> (i64, i64, i64) {
-    let t = db.table("access_log");
-    let pv: i64 = sqlx::query_scalar(&format!(
-        "SELECT COUNT(*) FROM {t} WHERE time >= ? AND time <= ?"
-    ))
-    .bind(start)
-    .bind(end)
-    .fetch_one(&db.pool)
-    .await
-    .unwrap_or(0);
-    // DISTINCT 子查询两种方言通用，避免拼接函数差异。
-    let uv: i64 = sqlx::query_scalar(&format!(
-        "SELECT COUNT(*) FROM (SELECT DISTINCT ip, ua FROM {t} WHERE time >= ? AND time <= ?)"
-    ))
-    .bind(start)
-    .bind(end)
-    .fetch_one(&db.pool)
-    .await
-    .unwrap_or(0);
-    let ip: i64 = sqlx::query_scalar(&format!(
-        "SELECT COUNT(*) FROM (SELECT DISTINCT ip FROM {t} WHERE time >= ? AND time <= ?)"
-    ))
-    .bind(start)
-    .bind(end)
-    .fetch_one(&db.pool)
-    .await
-    .unwrap_or(0);
-    (pv, uv, ip)
+/// UV 表达式：去重 `(ip, ua)`。MySQL 原生支持多列 `DISTINCT`，SQLite 用分隔拼接等价。
+fn uv_expr(dialect: &Dialect) -> &'static str {
+    match dialect {
+        Dialect::Mysql => "COUNT(DISTINCT ip, ua)",
+        Dialect::Sqlite => "COUNT(DISTINCT ip || CHAR(7) || ua)",
+    }
+}
+
+/// 今日按小时分组的桶表达式（`time` 落在 `[ts, te]` 内时值为 0..=23）。
+fn hour_expr(dialect: &Dialect) -> String {
+    match dialect {
+        // SQLite 整数除法截断即取整；MySQL 用 FLOOR。
+        Dialect::Sqlite => "CAST((time - ?) / 3600 AS INTEGER)".to_string(),
+        Dialect::Mysql => "FLOOR((time - ?) / 3600)".to_string(),
+    }
 }
 
 pub async fn overview(db: &Db, now: i64, tz_secs: i64) -> Overview {
     let (ts, te) = day_bounds(now, tz_secs, 0);
-    let (ys, ye) = day_bounds(now, tz_secs, 1);
-    let (pv_today, uv_today, ip_today) = count_between(db, ts, te).await;
-    let (pv_yesterday, uv_yesterday, ip_yesterday) = count_between(db, ys, ye).await;
+    let (ys, _) = day_bounds(now, tz_secs, 1);
     let t = db.table("access_log");
-    let pv_all: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {t}"))
-        .fetch_one(&db.pool)
-        .await
-        .unwrap_or(0);
-    let uv_all: i64 =
-        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM (SELECT DISTINCT ip, ua FROM {t})"))
-            .fetch_one(&db.pool)
-            .await
-            .unwrap_or(0);
-    let ip_all: i64 =
-        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM (SELECT DISTINCT ip FROM {t})"))
-            .fetch_one(&db.pool)
-            .await
-            .unwrap_or(0);
-    let mut hours = Vec::with_capacity(24);
-    for hour in 0..24 {
-        let (hs, he) = (ts + hour as i64 * 3600, ts + hour as i64 * 3600 + 3599);
-        let (pv, uv, ip) = count_between(db, hs, he).await;
-        hours.push(HourStat {
-            hour: hour as u32,
-            pv,
-            uv,
-            ip,
-        });
+    let uv = uv_expr(&db.dialect);
+    let mut ov = Overview {
+        pv_today: 0,
+        uv_today: 0,
+        ip_today: 0,
+        pv_yesterday: 0,
+        uv_yesterday: 0,
+        ip_yesterday: 0,
+        pv_all: 0,
+        uv_all: 0,
+        ip_all: 0,
+        hours: (0..24)
+            .map(|hour| HourStat { hour, pv: 0, uv: 0, ip: 0 })
+            .collect(),
+    };
+    // Q1：今日 24 小时分布，一次 GROUP BY 扫完。
+    let hour_sql = format!(
+        "SELECT {} AS h, COUNT(*) AS pv, COUNT(DISTINCT ip) AS ipc, {uv} AS uvc \
+         FROM {t} WHERE time >= ? AND time <= ? GROUP BY h",
+        hour_expr(&db.dialect)
+    );
+    if let Ok(rows) = sqlx::query(&hour_sql).bind(ts).bind(ts).bind(te).fetch_all(&db.pool).await {
+        for row in &rows {
+            let h = col_i64(row, "h").unwrap_or(-1);
+            if (0..24).contains(&h) {
+                let slot = &mut ov.hours[h as usize];
+                slot.pv = col_i64(row, "pv").unwrap_or(0);
+                slot.ip = col_i64(row, "ipc").unwrap_or(0);
+                slot.uv = col_i64(row, "uvc").unwrap_or(0);
+            }
+        }
     }
-    Overview {
-        pv_today,
-        uv_today,
-        ip_today,
-        pv_yesterday,
-        uv_yesterday,
-        ip_yesterday,
-        pv_all,
-        uv_all,
-        ip_all,
-        hours,
+    // Q2：今日/昨日总量，一条按天分组。
+    let day_sql = format!(
+        "SELECT (CASE WHEN time >= ? THEN 0 ELSE 1 END) AS d, COUNT(*) AS pv, \
+         COUNT(DISTINCT ip) AS ipc, {uv} AS uvc \
+         FROM {t} WHERE time >= ? AND time <= ? GROUP BY d"
+    );
+    if let Ok(rows) = sqlx::query(&day_sql).bind(ts).bind(ys).bind(te).fetch_all(&db.pool).await {
+        for row in &rows {
+            match col_i64(row, "d").unwrap_or(-1) {
+                0 => {
+                    ov.pv_today = col_i64(row, "pv").unwrap_or(0);
+                    ov.ip_today = col_i64(row, "ipc").unwrap_or(0);
+                    ov.uv_today = col_i64(row, "uvc").unwrap_or(0);
+                }
+                1 => {
+                    ov.pv_yesterday = col_i64(row, "pv").unwrap_or(0);
+                    ov.ip_yesterday = col_i64(row, "ipc").unwrap_or(0);
+                    ov.uv_yesterday = col_i64(row, "uvc").unwrap_or(0);
+                }
+                _ => {}
+            }
+        }
     }
+    // Q3：全站总量。
+    let all_sql = format!("SELECT COUNT(*) AS pv, COUNT(DISTINCT ip) AS ipc, {uv} AS uvc FROM {t}");
+    if let Ok(Some(row)) = sqlx::query(&all_sql).fetch_optional(&db.pool).await {
+        ov.pv_all = col_i64(&row, "pv").unwrap_or(0);
+        ov.ip_all = col_i64(&row, "ipc").unwrap_or(0);
+        ov.uv_all = col_i64(&row, "uvc").unwrap_or(0);
+    }
+    ov
 }
 
-/// 来源域名 / 来源页 Top（按 `referer_domain` / `referer` 聚合，两边引擎都会写这两列）。
+/// 来源域名 / 来源页 Top，对齐 PHP `parseReferer`：按 **entrypoint** 聚合，不是 referer。
 pub async fn top_referers(db: &Db, limit: i64) -> (Vec<(String, i64)>, Vec<(String, i64)>) {
     let t = db.table("access_log");
     let domains = sqlx::query(&format!(
-        "SELECT referer_domain AS value, COUNT(*) AS n FROM {t} \
-         WHERE referer_domain <> '' GROUP BY referer_domain ORDER BY n DESC LIMIT ?"
+        "SELECT entrypoint_domain AS value, COUNT(*) AS n FROM {t} \
+         WHERE entrypoint_domain <> '' GROUP BY entrypoint_domain ORDER BY n DESC LIMIT ?"
     ))
     .bind(limit)
     .fetch_all(&db.pool)
@@ -502,8 +625,8 @@ pub async fn top_referers(db: &Db, limit: i64) -> (Vec<(String, i64)>, Vec<(Stri
     })
     .unwrap_or_default();
     let urls = sqlx::query(&format!(
-        "SELECT referer AS value, COUNT(*) AS n FROM {t} \
-         WHERE referer <> '' GROUP BY referer ORDER BY n DESC LIMIT ?"
+        "SELECT entrypoint AS value, COUNT(*) AS n FROM {t} \
+         WHERE entrypoint <> '' GROUP BY entrypoint ORDER BY n DESC LIMIT ?"
     ))
     .bind(limit)
     .fetch_all(&db.pool)
@@ -578,4 +701,171 @@ fn int_to_ip(n: i64) -> String {
         return "0.0.0.0".into();
     }
     std::net::Ipv4Addr::from(n as u32).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ddl_covers_both_dialects() {
+        let lite = create_table_sql(&Dialect::Sqlite, "typecho_access_log");
+        assert!(lite.contains("AUTOINCREMENT"));
+        assert!(lite.contains("entrypoint_domain"));
+        assert!(lite.contains("robot_id"));
+        let mysql = create_table_sql(&Dialect::Mysql, "typecho_access_log");
+        assert!(mysql.contains("AUTO_INCREMENT"));
+        assert!(mysql.contains("TINYINT(1)"));
+        assert!(mysql.contains("entrypoint VARCHAR(255)"));
+        let lite_idx = create_index_sql(&Dialect::Sqlite, "typecho_", "time", "time");
+        assert!(lite_idx.contains("IF NOT EXISTS"));
+        let mysql_idx = create_index_sql(&Dialect::Mysql, "typecho_", "time", "time");
+        assert!(!mysql_idx.contains("IF NOT EXISTS"));
+        assert!(mysql_idx.contains("typecho_access_log_time"));
+    }
+
+    #[test]
+    fn entrypoint_resolution() {
+        // 外链：记 entrypoint 并提示写 cookie。
+        let (ep, set) = resolve_entrypoint("http://test.local", "https://ext.example/a", "");
+        assert_eq!(ep, "https://ext.example/a");
+        assert!(set);
+        // 同站：置空且不写。
+        let (ep, set) = resolve_entrypoint("http://test.local", "http://test.local/archives/1/", "https://ext.example/a");
+        assert_eq!(ep, "");
+        assert!(!set);
+        // 无 Referer：沿用 cookie，不重复写。
+        let (ep, set) = resolve_entrypoint("http://test.local", "", "https://ext.example/a");
+        assert_eq!(ep, "https://ext.example/a");
+        assert!(!set);
+        // 都空：空且不写。
+        let (ep, set) = resolve_entrypoint("http://test.local", "", "");
+        assert_eq!(ep, "");
+        assert!(!set);
+    }
+
+    async fn mock_keycdn(status: &str, body: &str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let status = status.to_string();
+        let body = body.to_string();
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = vec![0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let resp = format!(
+                    "{status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(resp.as_bytes()).await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn keycdn_success_and_failure_shapes() {
+        let base = mock_keycdn(
+            "HTTP/1.1 200 OK",
+            r#"{"status":"success","data":{"geo":{"country_name":"United States","city":"Mountain View"}}}"#,
+        )
+        .await;
+        assert_eq!(
+            keycdn_lookup(&base, "8.8.8.8").await.as_deref(),
+            Some("United States Mountain View")
+        );
+        let base = mock_keycdn("HTTP/1.1 200 OK", r#"{"status":"error"}"#).await;
+        assert_eq!(keycdn_lookup(&base, "8.8.8.8").await, None);
+        let base = mock_keycdn("HTTP/1.1 500 Boom", "x").await;
+        assert_eq!(keycdn_lookup(&base, "8.8.8.8").await, None);
+    }
+
+    #[tokio::test]
+    async fn geo_local_and_fallback() {
+        let (code, data) = geo_for_ip_with("127.0.0.1", "http://127.0.0.1:9").await;
+        assert_eq!((code, data.as_str()), (0, "127.0.0.1 回环地址"));
+        let (code, data) = geo_for_ip_with("192.168.1.2", "http://127.0.0.1:9").await;
+        assert_eq!(code, 0);
+        assert!(data.contains("内网地址"), "{data}");
+        let (code, data) = geo_for_ip_with("bogus", "http://127.0.0.1:9").await;
+        assert_eq!((code, data.as_str()), (100, "解析ip失败"));
+        // 公网 + 不可达基址 → code 100 的 fallback 文案。
+        let (code, data) = geo_for_ip_with("8.8.8.8", "http://127.0.0.1:9").await;
+        assert_eq!(code, 100);
+        assert!(data.contains("tools.keycdn.com"), "{data}");
+    }
+
+    #[tokio::test]
+    async fn log_visit_writes_ua_and_entrypoint_columns() {
+        let db = Db::connect("sqlite::memory:", "t_").await.unwrap();
+        ensure_table(&db).await.unwrap();
+        log_visit(
+            &db,
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "/feed/",
+            "203.0.113.7",
+            "https://ext.example/a",
+            "https://ext.example/a",
+            1_700_000_100,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        log_visit(
+            &db,
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36",
+            "/",
+            "198.51.100.9",
+            "",
+            "",
+            1_700_000_100,
+            None,
+            Some(0),
+        )
+        .await
+        .unwrap();
+        let rows = sqlx::query(
+            r#"SELECT robot, robot_id, browser_id, os_id, entrypoint, entrypoint_domain FROM "t_access_log" ORDER BY id"#,
+        )
+        .fetch_all(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(col_i64(&rows[0], "robot").unwrap(), 1);
+        assert!(!col_str(&rows[0], "robot_id").is_empty());
+        assert_eq!(col_str(&rows[0], "entrypoint"), "https://ext.example/a");
+        assert_eq!(col_str(&rows[0], "entrypoint_domain"), "ext.example");
+        assert_eq!(col_str(&rows[1], "browser_id"), "Chrome");
+        assert_eq!(col_str(&rows[1], "os_id"), "Windows");
+        assert_eq!(col_i64(&rows[1], "robot").unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn overview_uses_grouped_queries() {
+        let db = Db::connect("sqlite::memory:", "t_").await.unwrap();
+        ensure_table(&db).await.unwrap();
+        let now = 1_700_000_000_i64;
+        let (ts, _) = day_bounds(now, 0, 0);
+        let (ys, _) = day_bounds(now, 0, 1);
+        for (ua, ip, at) in [
+            ("ua-a", "10.0.0.1", ts + 100),
+            ("ua-b", "10.0.0.1", ts + 200),
+            ("ua-c", "10.0.0.2", ts + 5 * 3600),
+            ("ua-d", "10.0.0.3", ys + 100),
+        ] {
+            log_visit(&db, ua, "/", ip, "", "", at, None, None).await.unwrap();
+        }
+        let ov = overview(&db, now, 0).await;
+        assert_eq!((ov.pv_today, ov.uv_today, ov.ip_today), (3, 3, 2));
+        assert_eq!((ov.pv_yesterday, ov.uv_yesterday, ov.ip_yesterday), (1, 1, 1));
+        assert_eq!((ov.pv_all, ov.uv_all, ov.ip_all), (4, 4, 3));
+        assert_eq!(ov.hours.len(), 24);
+        assert_eq!(ov.hours[0].pv, 2);
+        assert_eq!(ov.hours[5].pv, 1);
+        assert_eq!(ov.hours[23].pv, 0);
+        // 来源统计走 entrypoint（PHP parseReferer 口径）。
+        let (domains, urls) = top_referers(&db, 10).await;
+        assert!(domains.is_empty() && urls.is_empty());
+    }
 }
