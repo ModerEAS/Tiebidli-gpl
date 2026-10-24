@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="blog-post" id="post-panel">
+    <article class="single-post panel box-shadow-wrap-normal" itemscope itemtype="http://schema.org/BlogPosting">
+        <header class="post-header">
+            <h1 class="m-t-none text-title" itemprop="name headline"><a itemprop="url" href="{{ permalink | safe }}">{{ heading }}</a></h1>
+            {% if not is_page %}
+            <div class="text-muted post-item-foot">
+                <span>作者: <a itemprop="name" href="{{ author_url | safe }}" rel="author">{{ author }}</a></span>
+                <span>时间: <time datetime="{{ datetime }}" itemprop="datePublished">{{ date }}</time></span>
+                <span>分类: {{ categories | safe }}</span>
+                <span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ views }}</span></span>
+            </div>
+            {% endif %}
+        </header>
+        <div class="entry-content l-h-2x" id="post-content" itemprop="articleBody">
+            {% if locked %}
+            <form class="protected" method="post" action="{{ permalink | safe }}">
+                <p>请输入密码访问</p>
+                {% if password_error %}<p>{{ password_error }}</p>{% endif %}
+                <p><input type="password" name="protectPassword"><input type="hidden" name="protectCID" value="{{ cid }}"></p>
+                <p><button type="submit">提交</button></p>
+            </form>
+            {% else %}
+            {{ html | safe }}
+            {% endif %}
+        </div>
+        {% if not is_page and tags %}
+        <p itemprop="keywords" class="post-tags">标签: {{ tags | safe }}</p>
+        {% endif %}
+        {% if not is_page and not locked %}
+        <div class="support-author">
+            <button id="star_post" data-cid="{{ cid }}" class="like_button btn btn-pay btn-rounded">
+                <span>Like&nbsp;<span id="like_label" class="like_label">{{ stars }}</span></span>
+            </button>
+        </div>
+        <div class="post-actions">
+            <button id="post_speech" type="button">朗读</button>
+            <button id="read_mode_toggle" type="button">阅读模式</button>
+            <button id="font_size_dec" type="button">A-</button>
+            <button id="font_size_inc" type="button">A+</button>
+        </div>
+        {% endif %}
+        <nav class="post-neighbors">
+            {% if newer_url %}<a rel="prev" href="{{ newer_url | safe }}">← {{ newer_title }}</a>{% endif %}
+            {% if older_url %}<a rel="next" href="{{ older_url | safe }}">{{ older_title }} →</a>{% endif %}
+        </nav>
+    </article>
+    {% if nav_slug == "cross" %}
+    <div id="cross_stream">
+        {% for c in cross_comments %}
+        <div class="panel" id="comment-{{ c.coid }}">
+            <div id="comment-{{ c.coid }}-body" data-id="comment-{{ c.coid }}" data-comment="{{ c.coid }}">
+                <span class="comment-author"><b>{{ c.author }}</b></span>
+                <time datetime="{{ c.iso }}">{{ c.date }}</time>
+                {{ c.html | safe }}
+            </div>
+            <div class="panel-footer" id="comment-{{ c.coid }}-footer" data-id="comment-{{ c.coid }}">
+                <div class="say_footer bg-white-pure">
+                    <a data-coid="{{ c.coid }}" class="text-muted star_talk">赞&nbsp;<span class="star_count">{{ c.stars }}</span></a>
+                    {% if c.edit_url %}
+                    <a href="{{ c.edit_url | safe }}" class="cross-edit-link" data-coid="{{ c.coid }}">编辑</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if not locked %}
+    <div id="comments">
+        {% if comment_count > 0 %}
+        <h4 class="comments-title">已有 {{ comment_total }} 条评论</h4>
+        <div id="post-comment-list"><ol class="comment-list">{{ comment_html | safe }}</ol></div>
+        {{ comment_nav | safe }}
+        {% endif %}
+        {% if ping_html %}<h4>引用</h4><ol class="comment-list ping-list">{{ ping_html | safe }}</ol>{% endif %}
+        {% if allow_comment %}
+        <div id="{{ respond_id }}" class="respond comment-respond">
+            <h3 id="response">添加新评论</h3>
+            {% if comment_error %}<p>{{ comment_error }}</p>{% endif %}
+            <form method="post" action="{{ comment_url | safe }}" id="comment-form" role="form">
+                <input type="hidden" name="parent" id="comment-parent" value="{{ reply_to }}">
+                {% if viewer_name %}
+                <p>登录身份: <a href="{{ admin_url | safe }}">{{ viewer_name }}</a>. <a href="{{ logout_url | safe }}">退出 &raquo;</a></p>
+                {% else %}
+                <p><label>称呼<input type="text" name="author" value="{{ remember_author }}" required></label></p>
+                <p><label>Email<input type="email" name="mail" value="{{ remember_mail }}"{% if require_mail %} required{% endif %}></label></p>
+                <p><label>网站<input type="url" name="url" value="{{ remember_url }}" placeholder="http://"></label></p>
+                {% endif %}
+                <p><label>内容<textarea rows="8" name="text" required>{{ remember_text }}</textarea></label></p>
+                <p><button type="submit">提交评论</button></p>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    <div class="tag_toc_body hide"><div id="tocTree" class="tocTree"></div></div>
+</div>
+{% endblock %}

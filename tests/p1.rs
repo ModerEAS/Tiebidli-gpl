@@ -11,6 +11,14 @@ use tower::ServiceExt;
 static N: AtomicU64 = AtomicU64::new(1000);
 
 async fn boot() -> (axum::Router, Db) {
+    boot_inner(None).await
+}
+
+async fn boot_theme() -> (axum::Router, Db) {
+    boot_inner(Some(std::path::PathBuf::from("themes/handsome"))).await
+}
+
+async fn boot_inner(template_dir: Option<std::path::PathBuf>) -> (axum::Router, Db) {
     let n = N.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
         "tiebidli-p1-{n}-{}.db",
@@ -30,7 +38,7 @@ async fn boot() -> (axum::Router, Db) {
     let backups = path.with_extension("backups");
     std::fs::create_dir_all(&backups).expect("backups");
     cfg.backup_dir = backups;
-    cfg.template_dir = None;
+    cfg.template_dir = template_dir;
     let db = Db::connect(&url, &cfg.prefix).await.expect("connect");
     for stmt in include_str!("../schema/typecho-1.2-sqlite.sql").split(';') {
         let stmt = stmt.trim();
@@ -742,4 +750,169 @@ async fn access_feed_entrypoint_ua_parity() {
     let (_, robot, _, browser) = last_ep(&db).await;
     assert_eq!(robot, 0);
     assert_eq!(browser, "Chrome");
+}
+
+#[tokio::test]
+async fn theme_parity_layout_and_actions() {
+    // 新主题骨架：THEME_DIR 指向 themes/handsome，断言现网对齐的 class/节点。
+    let (app, db) = boot_theme().await;
+    let cookie = login(&app).await;
+    activate(&app, &db, &cookie, "Access").await;
+    activate(&app, &db, &cookie, "Links").await;
+    sqlx::query(r#"INSERT INTO "typecho_links" ("name","url","sort","image","description","user","order") VALUES ('bobo','https://example.com','ten','','','',0)"#)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let (status, home, _, _) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK, "{home}");
+    for needle in [
+        "blog-post post-list",
+        "single-post panel",
+        "index-post-title",
+        "post-item-foot",
+        "浏览次数",
+        "post-calendar",
+        "category-radar",
+        "widget-tabs-4-hots",
+        "handsome_global_player",
+        "MUSIC_API",
+        "action/handsome-meting-api",
+        "使用links插件",
+        "bobo",
+        "app-header",
+        "app-aside",
+        "app-content-body",
+        "app-footer",
+        "search_modal",
+    ] {
+        assert!(home.contains(needle), "missing {needle}");
+    }
+
+    // 文章页：正文容器、目录、朗读/阅读模式、点赞按钮与计数。
+    let (status, single, _, _) = get(&app, "/archives/1/").await;
+    assert_eq!(status, StatusCode::OK, "{single}");
+    for needle in [
+        "entry-content",
+        "tocTree",
+        "star_post",
+        "like_label",
+        "post_speech",
+        "read_mode_toggle",
+        "respond-post-1",
+    ] {
+        assert!(single.contains(needle), "missing {needle}");
+    }
+
+    // 点赞：成功 1，带 cookie 重复 2，不存在回 -1。
+    let (status, body, _, headers) = call(
+        &app,
+        Request::builder().method("POST").uri("/?action=star_post&cid=1").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.trim(), "1");
+    let star_cookie = headers
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .map(|v| v.split(';').next().unwrap_or("").to_string())
+        .collect::<Vec<_>>()
+        .join("; ");
+    assert!(star_cookie.contains("extend_post_stars"), "{star_cookie}");
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().method("POST").uri("/?action=star_post&cid=1").header("cookie", &star_cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.trim(), "2");
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().uri("/?action=star_post&cid=99999").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.trim(), "-1");
+    // star_talk 缺参数/无行同样 -1。
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder().uri("/?action=star_talk&coid=99999").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.trim(), "-1");
+
+    // 音乐 Action：非法源/缺参 403；parse 未登录 403。
+    for uri in [
+        "/action/handsome-meting-api?server=spotify&type=song&id=1",
+        "/action/handsome-meting-api?server=netease&type=song&id=",
+        "/action/handsome-meting-api?do=parse&data=https://music.163.com/playlist?id=1",
+    ] {
+        let (status, _, _, _) = call(&app, Request::builder().uri(uri).body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");
+    }
+
+    // 时光机编辑：匿名 100。
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/action/cross-edit?do=edit&coid=1")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("text=hi"))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("\"code\":100"), "{body}");
+}
+
+#[tokio::test]
+async fn cross_edit_authed_flow() {
+    // 登录作者改自己的时光机评论：token 绑定来源页，成功 code 0 并落库。
+    let (app, db) = boot_theme().await;
+    sqlx::query(
+        r#"INSERT INTO "typecho_contents"
+        ("cid","title","slug","created","modified","text","order","authorId","template","type","status","password","commentsNum","allowComment","allowPing","allowFeed","parent")
+        VALUES (100, '时光机', 'cross', 1700000000, 1700000100, 'x', 0, 1, NULL, 'page', 'publish', '', 0, '1', '1', '1', 0)"#,
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    let coid: i64 = sqlx::query(
+        r#"INSERT INTO "typecho_comments" ("cid","created","author","authorId","ownerId","mail","url","ip","agent","text","type","status","parent")
+        VALUES (100, 1700000000, '站长', 1, 1, '', '', '127.0.0.1', '', '旧内容', 'comment', 'approved', 0) RETURNING coid"#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .map(|row| tiebidli::db::col_i64(&row, "coid").unwrap())
+    .unwrap_or(1);
+    let cookie = login(&app).await;
+    let code = tiebidli::auth::security_token(
+        "test-secret",
+        Some((auth_code(&db).await.as_deref().unwrap_or(""), 1)),
+        "http://test.local/cross.html",
+    );
+    let uri = format!("/action/cross-edit?do=edit&coid={coid}&_={code}");
+    let (status, body, _, _) = call(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri(&uri)
+            .header("cookie", &cookie)
+            .header("referer", "http://test.local/cross.html")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("text=新内容"))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("\"code\":0"), "{body}");
+    // 时光机页渲染评论流（含 star_talk 与编辑入口）。
+    let (status, cross, _, _) = get(&app, "/cross.html").await;
+    assert_eq!(status, StatusCode::OK, "{cross}");
+    for needle in ["cross_stream", "star_talk", "新内容"] {
+        assert!(cross.contains(needle), "missing {needle}");
+    }
 }

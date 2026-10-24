@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="blog-post post-list" id="post-panel">
+    <header class="archive-header"><h1 class="archive-title">包含关键字 {{ keyword }} 的文章（共 {{ count }} 篇）</h1></header>
+    {% for p in posts %}
+    <div class="single-post panel panel-large box-shadow-wrap-normal">
+        <div class="post-meta wrapper-lg padder-v">
+            <div class="post_title_wrapper">
+                <h2 class="m-t-xs text-ellipsis index-post-title text-title"><a href="{{ p.url | safe }}">{{ p.title }}</a></h2>
+            </div>
+            <p class="summary l-h-2x text-muted">{{ p.summary }}</p>
+            <div class="text-muted post-item-foot text-ellipsis list-inline">
+                <li><time datetime="{{ p.datetime }}">{{ p.date }}</time></li>
+                <li><span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ p.views }}</span></span></li>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="single-post panel"><div class="post-meta"><p>没有找到内容</p></div></div>
+    {% endfor %}
+    {{ pagination | safe }}
+</div>
+{% endblock %}

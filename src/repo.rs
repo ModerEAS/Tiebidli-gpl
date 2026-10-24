@@ -299,6 +299,24 @@ impl Db {
         Ok(posts)
     }
 
+    /// 热门按浏览数（Access `views` 列；老库缺列时调用方回退到 `hot_posts`）。
+    pub async fn hot_posts_by_views(&self, limit: i64, now: i64) -> Result<Vec<Post>, sqlx::Error> {
+        let sql = format!(
+            "SELECT {cols} FROM {contents} c LEFT JOIN {users} u ON c.authorId = u.uid \
+             WHERE c.type = 'post' AND c.status = 'publish' AND c.created < ? \
+             AND (c.password IS NULL OR c.password = '') \
+             ORDER BY COALESCE(c.views, 0) DESC, c.cid DESC LIMIT ?",
+            cols = self.content_cols(),
+            contents = self.table("contents"),
+            users = self.table("users"),
+        );
+        let mut posts = self
+            .fetch_posts(&sql, &[Bind::I64(now), Bind::I64(limit)])
+            .await?;
+        self.attach(&mut posts).await?;
+        Ok(posts)
+    }
+
     pub async fn random_posts(&self, limit: i64, now: i64) -> Result<Vec<Post>, sqlx::Error> {
         let sql = format!(
             "SELECT {cols} FROM {contents} c LEFT JOIN {users} u ON c.authorId = u.uid \

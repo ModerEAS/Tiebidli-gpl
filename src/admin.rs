@@ -1099,6 +1099,13 @@ async fn action_dispatch(
     if action == "ajax" {
         return ajax_action(&state, &q, &headers, &body).await;
     }
+    // 主题公开 Action（自带门禁，不走后台 `_` 校验）：音乐解析、时光机编辑。
+    if action == "handsome-meting-api" {
+        return crate::http::meting_route(&state, &q, &headers).await;
+    }
+    if action == "cross-edit" {
+        return crate::http::cross_edit_route(&state, &method, &q, &body, &headers).await;
+    }
     if !action_allowed(&state, &headers, &q, &body).await {
         return go_back(&headers);
     }
@@ -3231,6 +3238,8 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         }
     }
     let recent = state.db.recent_comments(5, now).await.unwrap_or_default();
+    let hot_posts: Vec<Post> = Vec::new();
+    let friend_links: Vec<crate::friend_links::FriendLink> = Vec::new();
     let chrome = Chrome {
         cfg: &state.cfg,
         site: &site,
@@ -3238,6 +3247,8 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         recent_posts: &recent_posts,
         archives: &archives,
         recent: &recent,
+        hot_posts: &hot_posts,
+        friend_links: &friend_links,
         now,
         cookies: HashMap::new(),
         viewer_name: None,
@@ -3245,6 +3256,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         viewer_auth: "",
         page_url: "",
         access_ids: (None, None),
+        viewer_is_editor: false,
     };
     let view = SingleView {
         post: &post,
@@ -3262,6 +3274,8 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         comment_nav: "",
         ping_html: "",
         attachment_html: "",
+        stars: 0,
+        cross_json: None,
     };
     match state.theme.render_single(&chrome, &view) {
         Ok(html) => html_ok(html),

@@ -1,0 +1,58 @@
+/* 占位样式：只保证布局不断（顶栏固定、侧栏左置、主列避让）。
+   视觉细化（液态玻璃等）由后续自做，不在此展开。 */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body.app { font: 14px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #222; background: #f4f4f4; }
+a { color: #0a58ca; }
+.hide { display: none !important; }
+.text-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#header.app-header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; background: #222; color: #fff; }
+#header a { color: #fff; }
+#header_left, #header_right { display: flex; align-items: center; gap: 12px; padding: 0 16px; min-height: 50px; }
+#header_right { justify-content: space-between; }
+.nav { list-style: none; margin: 0; padding: 0; display: flex; gap: 12px; flex-wrap: wrap; }
+.nav-sub { display: flex; gap: 8px; }
+
+#aside.app-aside { position: fixed; top: 50px; left: 0; bottom: 0; width: 230px; overflow-y: auto; background: #fff; border-right: 1px solid #e3e3e3; padding: 12px; }
+.app-content { margin: 50px 0 0 230px; padding: 16px; }
+.app-content-body { max-width: 880px; }
+#footer.app-footer { margin-left: 230px; padding: 16px; color: #888; font-size: 12px; }
+
+.single-post.panel { background: #fff; border: 1px solid #e3e3e3; margin-bottom: 16px; padding: 16px; }
+.post-meta { margin-top: 8px; }
+.index-post-title { margin: 0; font-size: 20px; }
+.summary { color: #666; }
+.post-item-foot { list-style: none; display: flex; gap: 14px; padding: 0; color: #999; font-size: 12px; }
+.index-post-img .item-thumb { width: 100%; height: 180px; background-size: cover; background-position: center; background-color: #ddd; }
+.entry-content img { max-width: 100%; }
+.entry-content pre { overflow-x: auto; background: #f6f6f6; padding: 12px; }
+.post-actions { display: flex; gap: 8px; margin: 12px 0; }
+.post-neighbors { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; }
+
+#comment-form input, #comment-form textarea { display: block; width: 100%; max-width: 560px; margin: 4px 0 10px; }
+.comment-list { list-style: none; padding-left: 0; }
+.comment-children { margin-left: 24px; }
+
+#search_modal { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 100; background: #fff; border: 1px solid #ccc; padding: 16px; width: min(560px, 90vw); }
+#tocTree { position: fixed; right: 12px; top: 120px; width: 200px; max-height: 60vh; overflow: auto; background: #fff; border: 1px solid #e3e3e3; padding: 8px; font-size: 12px; }
+#tocTree:empty { display: none; }
+#handsome_global_player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; }
+
+body.dark { background: #111; color: #ddd; }
+body.dark a { color: #7aa5ff; }
+body.dark .single-post.panel, body.dark #aside.app-aside, body.dark #search_modal, body.dark #tocTree { background: #1c1c1c; border-color: #333; color: #ddd; }
+body.read-mode #aside.app-aside, body.read-mode #header_right { display: none; }
+body.read-mode .app-content { margin-left: 0; }
+body.read-mode #footer.app-footer { margin-left: 0; }
+
+@media (max-width: 767px) {
+    #aside.app-aside { display: none; }
+    #aside.app-aside.show { display: block; z-index: 80; }
+    .app-content, #footer.app-footer { margin-left: 0; }
+    .hidden-xs { display: none !important; }
+    .visible-xs { display: inline-block !important; }
+}
+@media (min-width: 768px) {
+    .visible-xs { display: none !important; }
+}

@@ -303,6 +303,22 @@ impl Db {
         Ok(())
     }
 
+    pub async fn comment_author(&self, coid: i64) -> Result<i64, sqlx::Error> {
+        let sql = format!("SELECT authorId FROM {} WHERE coid = ?", self.table("comments"));
+        let row = sqlx::query(&sql)
+            .bind(coid)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+        crate::db::col_i64(&row, "authorId")
+    }
+
+    pub async fn update_comment_text(&self, coid: i64, text: &str) -> Result<(), sqlx::Error> {
+        let sql = format!("UPDATE {} SET text = ? WHERE coid = ?", self.table("comments"));
+        sqlx::query(&sql).bind(text).bind(coid).execute(&self.pool).await?;
+        Ok(())
+    }
+
     pub async fn delete_comment(&self, coid: i64) -> Result<(), sqlx::Error> {
         let cid = comment_cid(self, coid).await?;
         let sql = format!("DELETE FROM {} WHERE coid = ?", self.table("comments"));

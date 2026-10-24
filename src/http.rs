@@ -159,6 +159,16 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     if path == "/access/log/delete.json" {
         return access_delete_json(state, &site, &cookies, &bytes).await;
     }
+    if path == "/action/handsome-meting-api" {
+        return meting_action(state, &site, &query, &cookies).await;
+    }
+    if path == "/action/cross-edit" {
+        return cross_edit_action(state, &site, &parts.method, &query, &form, &parts.headers, &cookies).await;
+    }
+    // 主题点赞：`action=star_post&cid=` / `action=star_talk&coid=`（GET/POST 均可，纯文本 1/2/-1）。
+    if let Some(resp) = star_action(state, &site, &parts.method, &query, &form, &parts.headers, &cookies).await {
+        return Ok(resp);
+    }
     if path == "/action/xmlrpc" {
         return crate::xmlrpc::handle(
             &state.db,
@@ -205,6 +215,8 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
         recent_posts,
         recent: state.db.recent_comments(5, now).await?,
         archives,
+        hot_posts: hot_posts(state, &site, now).await,
+        friend_links: friend_links_ten(state, &site).await,
     };
     let root = auth::site_root(
         &state.cfg.site_url,
@@ -216,6 +228,7 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     let viewer_auth = viewer.as_ref().map(|user| user.auth_code.clone()).unwrap_or_default();
     // 对齐 PHP `Access_Core::isAdmin`：管理员访问不记日志（浏览数照常按 cookie 去重）。
     let viewer_is_admin = viewer.as_ref().is_some_and(|user| user.pass("administrator"));
+    let viewer_is_editor = viewer.as_ref().is_some_and(|user| user.pass("editor"));
     let page_url = absolute_url(&parts.headers, &request_path, &site);
     let ctx = ReqCtx {
         state,
@@ -235,6 +248,7 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
         viewer_uid,
         viewer_auth: &viewer_auth,
         viewer_is_admin,
+        viewer_is_editor,
         page_url: &page_url,
     };
     match walk(&ctx, &path).await? {
@@ -247,6 +261,26 @@ struct ChromeBag {
     recent_posts: Vec<Post>,
     recent: Vec<(Comment, Post)>,
     archives: Vec<(i32, u32, i64)>,
+    hot_posts: Vec<Post>,
+    friend_links: Vec<crate::friend_links::FriendLink>,
+}
+
+/// 侧栏热门：Access 启用时按浏览数，否则按评论数（失败都回空，不阻塞渲染）。
+async fn hot_posts(state: &AppState, site: &Site, now: i64) -> Vec<Post> {
+    if crate::plugins::is_active(site, "Access") {
+        if let Ok(posts) = state.db.hot_posts_by_views(10, now).await {
+            return posts;
+        }
+    }
+    state.db.hot_posts(10, now).await.unwrap_or_default()
+}
+
+/// 侧栏友链：Links 启用时取全站 `ten` 分组（失败回空）。
+async fn friend_links_ten(state: &AppState, site: &Site) -> Vec<crate::friend_links::FriendLink> {
+    if !crate::plugins::is_active(site, "Links") {
+        return Vec::new();
+    }
+    crate::friend_links::list_by_sort(&state.db, "ten").await.unwrap_or_default()
 }
 
 struct ReqCtx<'a> {
@@ -267,6 +301,7 @@ struct ReqCtx<'a> {
     viewer_uid: i64,
     viewer_auth: &'a str,
     viewer_is_admin: bool,
+    viewer_is_editor: bool,
     page_url: &'a str,
 }
 
@@ -1077,6 +1112,12 @@ async fn show_single(
         comment_nav: &comment_nav,
         ping_html: &ping_html,
         attachment_html: &attachment_html,
+        stars: crate::stars::star_count(&ctx.state.db, &ctx.state.db.table("contents"), "cid", post.cid).await,
+        cross_json: if post.kind == "page" && post.slug == "cross" {
+            Some(crate::render::cross_stream_json(&ctx.state.db, &chrome, post, &comment_page.comments).await)
+        } else {
+            None
+        },
     };
     let html = ctx.state.theme.render_single(&chrome, &view)?;
     let status = extra.status.unwrap_or(if locked {
@@ -1107,6 +1148,197 @@ async fn show_single(
         attach_entrypoint(&mut headers, log_archive_visit(ctx, Some(post.cid), None).await);
     }
     Ok(Step::Done(html_response(ctx, status, html, &headers)))
+}
+
+/// 主题点赞（对齐主题 `Star::starCommon`）：cookie 去重，成功 `1`、已赞 `2`、失败 `-1`。
+/// 非点赞请求返回 `None`，继续正常调度。
+async fn star_action(
+    state: &AppState,
+    site: &crate::model::Site,
+    method: &Method,
+    query: &HashMap<String, String>,
+    form: &HashMap<String, String>,
+    headers: &HeaderMap,
+    cookies: &HashMap<String, String>,
+) -> Option<Response> {
+    if *method != Method::GET && *method != Method::POST {
+        return None;
+    }
+    let action = query.get("action").or_else(|| form.get("action"))?;
+    let (id_key, table, id_col, cookie_key) = match action.as_str() {
+        "star_post" => ("cid", "contents", "cid", "extend_post_stars"),
+        "star_talk" => ("coid", "comments", "coid", "extend_say_stars"),
+        _ => return None,
+    };
+    let fail = || plain(StatusCode::OK, "-1");
+    let id: i64 = query
+        .get(id_key)
+        .or_else(|| form.get(id_key))
+        .and_then(|s| s.parse().ok())
+        .filter(|id| *id > 0)?;
+    crate::stars::ensure_stars_columns(&state.db).await;
+    let root = auth::site_root(&state.cfg.site_url, &links::site_base(&state.cfg.site_url, site));
+    let name = crate::auth::cookie_name(&root, cookie_key);
+    let seen = cookies.get(&name).map(String::as_str).unwrap_or("");
+    if crate::stars::already_starred(seen, id) {
+        return Some(plain(StatusCode::OK, "2"));
+    }
+    let table_name = state.db.table(if table == "contents" { "contents" } else { "comments" });
+    if crate::stars::star_once(&state.db, &table_name, id_col, id).await.is_none() {
+        return Some(fail());
+    }
+    let mut headers_out = HeaderMap::new();
+    push_cookie(&mut headers_out, &name, &crate::stars::mark_starred(seen, id), None);
+    let mut resp = plain(StatusCode::OK, "1");
+    for (k, v) in headers_out.iter() {
+        resp.headers_mut().append(k, v.clone());
+    }
+    let _ = headers;
+    Some(resp)
+}
+
+/// 给 `admin::action_dispatch` 用的主题音乐入口（公开路由，自带参数校验）。
+pub(crate) async fn meting_route(state: &AppState, query: &HashMap<String, String>, headers: &HeaderMap) -> Response {
+    let now = chrono::Utc::now().timestamp();
+    let Ok(site) = state.db.load_site(now).await else {
+        return plain(StatusCode::INTERNAL_SERVER_ERROR, "读取设置失败");
+    };
+    let cookies = cookies_from(headers);
+    meting_action(state, &site, query, &cookies).await.unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))
+}
+
+/// 给 `admin::action_dispatch` 用的时光机编辑入口（自带登录 + contributor + `_` 校验）。
+pub(crate) async fn cross_edit_route(
+    state: &AppState,
+    method: &Method,
+    query: &HashMap<String, String>,
+    body: &str,
+    headers: &HeaderMap,
+) -> Response {
+    let now = chrono::Utc::now().timestamp();
+    let Ok(site) = state.db.load_site(now).await else {
+        return plain(StatusCode::INTERNAL_SERVER_ERROR, "读取设置失败");
+    };
+    let form = form_pairs(body);
+    let cookies = cookies_from(headers);
+    cross_edit_action(state, &site, method, query, &form, headers, &cookies)
+        .await
+        .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))
+}
+
+/// 主题音乐 Action（路径与现网 LocalConst `MUSIC_API` 一致）。
+/// 参数校验对齐 `MetingAction::check`；目前只实现 `netease` 源。
+async fn meting_action(
+    state: &AppState,
+    site: &crate::model::Site,
+    query: &HashMap<String, String>,
+    cookies: &HashMap<String, String>,
+) -> anyhow::Result<Response> {
+    let _ = state;
+    if query.get("do").map(String::as_str) == Some("parse") {
+        // 对齐 `MetingAction::action`：`do=parse` 需登录。
+        let root = auth::site_root(&state.cfg.site_url, &links::site_base(&state.cfg.site_url, site));
+        let logged = auth::session_user(&state.db, &root, cookies).await.ok().flatten().is_some();
+        if !logged {
+            return Ok(plain(StatusCode::FORBIDDEN, "forbidden"));
+        }
+        let data = query.get("data").map(String::as_str).unwrap_or("");
+        let (server, id, kind) = crate::meting::parse_music_url(data);
+        if server.is_empty() {
+            return Ok(plain(
+                StatusCode::OK,
+                format!("[hplayer]\n[Music title=\"歌曲名\" author=\"歌手\" url=\"{data}\" pic=\"图片文件URL\" lrc=\"歌词文件URL\"/]\n[/hplayer]\n").as_str(),
+            ));
+        }
+        return Ok(plain(
+            StatusCode::OK,
+            format!("[hplayer]\n[Music server=\"{server}\" id=\"{id}\" type=\"{kind}\"/]\n[/hplayer]\n").as_str(),
+        ));
+    }
+    let server = query.get("server").map(String::as_str).unwrap_or("");
+    let kind = query.get("type").map(String::as_str).unwrap_or("");
+    let id = query.get("id").map(String::as_str).unwrap_or("");
+    if !crate::meting::check(server, kind, id) || server != "netease" {
+        return Ok(plain(StatusCode::FORBIDDEN, ""));
+    }
+    let body = match kind {
+        "song" => crate::meting::api_song(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
+        "playlist" => crate::meting::api_playlist(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
+        "artist" => crate::meting::api_artist(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
+        "album" => crate::meting::api_album(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
+        "search" => crate::meting::api_search(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
+        "url" => crate::meting::api_url(id).await.map(|v| v.to_string()),
+        "lrc" => crate::meting::api_lrc(id).await.map(|v| v.to_string()),
+        "pic" => crate::meting::api_pic(id).await.map(|v| v.to_string()),
+        _ => None,
+    };
+    match body {
+        Some(json) => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(Body::from(json))
+            .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))),
+        None => Ok(plain(StatusCode::BAD_GATEWAY, "music api error")),
+    }
+}
+
+/// 时光机评论编辑/删除（对齐主题 `CrossAction` 的登录 + contributor 门禁与 `_` 校验）。
+/// 现网把编辑入口直接渲进 HTML（未登录点开才 302），这里同样只做 API 门禁。
+async fn cross_edit_action(
+    state: &AppState,
+    site: &crate::model::Site,
+    method: &Method,
+    query: &HashMap<String, String>,
+    form: &HashMap<String, String>,
+    headers: &HeaderMap,
+    cookies: &HashMap<String, String>,
+) -> anyhow::Result<Response> {
+    let fail = || json_response(serde_json::json!({"code": 100, "data": "forbidden"}));
+    if *method != Method::POST {
+        return Ok(fail());
+    }
+    let root = auth::site_root(&state.cfg.site_url, &links::site_base(&state.cfg.site_url, site));
+    let user = auth::session_user(&state.db, &root, cookies).await.ok().flatten();
+    let Some(user) = user.filter(|u| u.pass("contributor")) else {
+        return Ok(fail());
+    };
+    let referer = headers.get(header::REFERER).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let given = query.get("_").or_else(|| form.get("_")).map(String::as_str).unwrap_or("");
+    let token =
+        auth::security_token(site.get("secret"), Some((user.auth_code.as_str(), user.uid)), referer);
+    if given != token {
+        return Ok(fail());
+    }
+    let coid: i64 = query
+        .get("coid")
+        .or_else(|| form.get("coid"))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if coid <= 0 {
+        return Ok(fail());
+    }
+    let can = state
+        .db
+        .comment_author(coid)
+        .await
+        .is_ok_and(|author| author == user.uid || user.pass("editor"));
+    if !can {
+        return Ok(fail());
+    }
+    let op = query.get("do").or_else(|| form.get("do")).map(String::as_str).unwrap_or("");
+    let ok = match op {
+        "delete" => state.db.delete_comment(coid).await.is_ok(),
+        "edit" => {
+            let text = form.get("text").map(String::as_str).unwrap_or("");
+            !text.trim().is_empty() && state.db.update_comment_text(coid, text).await.is_ok()
+        }
+        _ => false,
+    };
+    if ok {
+        Ok(json_response(serde_json::json!({"code": 0})))
+    } else {
+        Ok(fail())
+    }
 }
 
 /// `GET /access/log/track.gif`：启用门控，始终回 1x1 GIF。
@@ -1825,6 +2057,8 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
         recent_posts: &ctx.bag.recent_posts,
         archives: &ctx.bag.archives,
         recent: &ctx.bag.recent,
+        hot_posts: &ctx.bag.hot_posts,
+        friend_links: &ctx.bag.friend_links,
         now: ctx.now,
         cookies,
         viewer_name: ctx.viewer_name,
@@ -1832,6 +2066,7 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
         viewer_auth: ctx.viewer_auth,
         page_url: ctx.page_url,
         access_ids: (None, None),
+        viewer_is_editor: ctx.viewer_is_editor,
     }
 }
 

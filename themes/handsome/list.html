@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block main %}
+<div class="blog-post post-list" id="post-panel">
+    {% if show_archive_title %}
+    <header class="archive-header"><h1 class="archive-title">{{ heading }}</h1></header>
+    {% endif %}
+    {% for p in posts %}
+    <div class="single-post panel panel-large box-shadow-wrap-normal">
+        {% if p.thumb %}
+        <div class="index-post-img">
+            <a href="{{ p.url | safe }}"><div class="item-thumb lazy" style="background-image: url({{ p.thumb | safe }})"></div></a>
+        </div>
+        {% endif %}
+        <div class="post-meta wrapper-lg padder-v">
+            <div class="post_title_wrapper">
+                <h2 class="m-t-xs text-ellipsis index-post-title text-title"><a href="{{ p.url | safe }}">{{ p.title }}</a></h2>
+            </div>
+            <p class="summary l-h-2x text-muted">{{ p.summary }}</p>
+            <div class="text-muted post-item-foot post-item-foot-icon text-ellipsis list-inline">
+                <li><a href="{{ p.author_url | safe }}">{{ p.author }}</a></li>
+                <li><time datetime="{{ p.datetime }}">{{ p.date }}</time></li>
+                <li><a href="{{ p.url | safe }}#comments">{{ p.comment_label }}</a></li>
+                <li><span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ p.views }}</span></span></li>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="single-post panel"><div class="post-meta"><p>没有找到内容</p></div></div>
+    {% endfor %}
+    {{ pagination | safe }}
+</div>
+{% endblock %}

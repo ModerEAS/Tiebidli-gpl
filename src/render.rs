@@ -13,6 +13,9 @@ pub struct Chrome<'a> {
     pub recent_posts: &'a [Post],
     pub archives: &'a [(i32, u32, i64)],
     pub recent: &'a [(Comment, Post)],
+    pub hot_posts: &'a [Post],
+    pub friend_links: &'a [crate::friend_links::FriendLink],
+    pub viewer_is_editor: bool,
     pub now: i64,
     pub cookies: HashMap<String, String>,
     pub viewer_name: Option<&'a str>,
@@ -135,6 +138,47 @@ pub struct SingleView<'a> {
     pub comment_nav: &'a str,
     pub ping_html: &'a str,
     pub attachment_html: &'a str,
+    pub stars: i64,
+    pub cross_json: Option<Value>,
+}
+
+/// 时光机页评论流（`nav_slug == "cross"` 时模板用它代替默认评论树）。
+/// 每条含点赞数；作者本人或编辑可得 `edit_url`（`_`-token 绑定本页 URL）。
+pub async fn cross_stream_json(
+    db: &crate::db::Db,
+    chrome: &Chrome<'_>,
+    post: &Post,
+    comments: &[Comment],
+) -> Value {
+    let stars = crate::stars::comment_stars(db, post.cid).await;
+    let markdown = chrome.site.flag("commentsMarkdown", false);
+    let items: Vec<Value> = comments
+        .iter()
+        .map(|c| {
+            let can_edit = chrome.viewer_uid != 0
+                && (c.author_id == chrome.viewer_uid || chrome.viewer_is_editor);
+            let edit_url = if can_edit {
+                let token = crate::auth::security_token(
+                    chrome.site.get("secret"),
+                    Some((chrome.viewer_auth, chrome.viewer_uid)),
+                    chrome.page_url,
+                );
+                format!("/action/cross-edit?do=edit&coid={}&_={token}", c.coid)
+            } else {
+                String::new()
+            };
+            json!({
+                "coid": c.coid,
+                "author": c.author,
+                "date": text::format_php_date(chrome.site.get_or("commentDateFormat", "Y-m-d H:i"), c.created, chrome.site.timezone()),
+                "iso": text::iso8601(c.created, chrome.site.timezone()),
+                "html": text::render_comment_html(&c.text, markdown),
+                "stars": stars.get(&c.coid).copied().unwrap_or(0),
+                "edit_url": edit_url,
+            })
+        })
+        .collect();
+    json!(items)
 }
 
 pub fn render_single(
@@ -198,6 +242,16 @@ pub fn render_single(
     ctx["tags"] = json!(tag_links(site, post));
     ctx["comment_total"] = json!(post.comments_num);
     ctx["views"] = json!(post.views.max(0));
+    ctx["stars"] = json!(view.stars.max(0));
+    ctx["cross_comments"] = view.cross_json.clone().unwrap_or(Value::Null);
+    let html_body = if view.locked {
+        String::new()
+    } else if post.kind == "attachment" {
+        view.attachment_html.to_string()
+    } else {
+        crate::plugins::filter_content(site, &text::render_post_html(&post.text))
+    };
+    ctx["has_math"] = json!(html_body.contains("$$") || html_body.contains("\\(") || html_body.contains("\\["));
     ctx["respond_id"] = json!(format!(
         "respond-{}-{}",
         if post.kind == "page" { "page" } else { "post" },
@@ -206,13 +260,7 @@ pub fn render_single(
     if post.kind == "page" {
         ctx["nav_slug"] = json!(post.slug);
     }
-    ctx["html"] = json!(if view.locked {
-        String::new()
-    } else if post.kind == "attachment" {
-        view.attachment_html.to_string()
-    } else {
-        crate::plugins::filter_content(site, &text::render_post_html(&post.text))
-    });
+    ctx["html"] = json!(html_body);
     ctx["newer_url"] = json!(view.newer.map(|p| links::content_path(site, p)));
     ctx["newer_title"] = json!(view.newer.map(|p| p.title.clone()));
     ctx["older_url"] = json!(view.older.map(|p| links::content_path(site, p)));
@@ -288,6 +336,7 @@ fn post_card(chrome: &Chrome<'_>, post: &Post) -> Value {
         "content": content,
         "categories": meta_links(site, &post.categories),
         "thumb": thumb,
+        "views": post.views.max(0),
         "author": post.display_author(),
         "author_url": links::author_path(site, post.author_id),
         "date": text::format_php_date(site.get_or("postDateFormat", "Y-m-d"), post.created, site.timezone()),
@@ -510,12 +559,46 @@ fn shell(
 ) -> Value {
     let site = chrome.site;
     let base = links::site_base(&chrome.cfg.site_url, site);
+    let meting_base = format!("{base}/action/handsome-meting-api");
     let desc = if description.is_empty() {
         site.get("description").to_string()
     } else {
         description.to_string()
     };
     let static_path = theme_asset_prefix(chrome);
+    let hot_posts: Vec<Value> = chrome.hot_posts.iter().map(|p| {
+        let title = if p.has_password() { "密码保护的文章".to_string() } else { p.title.clone() };
+        json!({
+            "title": title,
+            "url": links::content_path(site, p),
+            "views": p.views.max(0),
+            "date": text::format_php_date(site.get_or("postDateFormat", "Y-m-d"), p.created, site.timezone()),
+        })
+    }).collect();
+    let friend_links: Vec<Value> = chrome.friend_links.iter().map(|l| json!({
+        "name": l.name, "url": l.url, "description": l.description, "image": l.image,
+    })).collect();
+    let categories: Vec<Value> = site.categories.iter().map(|c| json!({
+        "name": c.name, "url": links::category_path(site, c), "count": c.count,
+    })).collect();
+    let archives_list: Vec<Value> = chrome.archives.iter().map(|(year, month, ts)| {
+        let mut vals = HashMap::new();
+        vals.insert("year".into(), format!("{year:04}"));
+        vals.insert("month".into(), format!("{month:02}"));
+        let href = links::route_url(site, "archive_month", &vals)
+            .unwrap_or_else(|| links::with_index(site, &format!("/{year:04}/{month:02}/")));
+        json!({"year": year, "month": month, "url": href,
+               "label": text::format_php_date("F Y", *ts, site.timezone())})
+    }).collect();
+    let recent_posts: Vec<Value> = chrome.recent_posts.iter().map(|p| {
+        let title = if p.has_password() { "密码保护的文章".to_string() } else { p.title.clone() };
+        json!({"title": title, "url": links::content_path(site, p)})
+    }).collect();
+    let recent_comments: Vec<Value> = chrome.recent.iter().map(|(c, p)| {
+        let href = format!("{}#comment-{}", links::content_path(site, p), c.coid);
+        json!({"author": c.author, "url": href,
+               "excerpt": text::truncate_chars(&text::plain_text(&c.text), 35)})
+    }).collect();
     json!({
         "page_title": page_title,
         "site_title": site.get_or("title", "Tiebidli"),
@@ -542,6 +625,19 @@ fn shell(
         "admin_url": "/admin/index.php",
         "logout_url": if chrome.viewer_name.is_some() { public_logout(chrome) } else { String::new() },
         "sidebar": sidebar_html(chrome),
+        "hot_posts": hot_posts,
+        "friend_links": friend_links,
+        "categories": categories,
+        "archives_list": archives_list,
+        "recent_posts": recent_posts,
+        "recent_comments": recent_comments,
+        "meting_api": format!("{meting_base}?server=:server&type=:type&id=:id&auth=:auth&r=:r"),
+        "meting_api_parse": format!("{meting_base}?do=parse"),
+        "calendar_json": serde_json::to_string(&archives_list).unwrap_or_else(|_| "[]".into()),
+        "cats_json": serde_json::to_string(&categories).unwrap_or_else(|_| "[]".into()),
+        "base_json": serde_json::to_string(&base).unwrap_or_else(|_| "\"\"".into()),
+        "meting_api_json": serde_json::to_string(&format!("{meting_base}?server=:server&type=:type&id=:id&auth=:auth&r=:r")).unwrap_or_default(),
+        "meting_api_parse_json": serde_json::to_string(&format!("{meting_base}?do=parse")).unwrap_or_default(),
         "show_archive_title": false,
         "plugin_header": crate::plugins::public_header(site),
         "plugin_footer": crate::plugins::public_footer_page(site, chrome.access_ids.0, chrome.access_ids.1),
@@ -570,6 +666,23 @@ fn sidebar_html(chrome: &Chrome<'_>) -> String {
                 "<li><a href=\"{}\">{}</a></li>",
                 html_escape(&links::content_path(site, post)),
                 html_escape(title)
+            ));
+        }
+        html.push_str("</ul></section>");
+    }
+    if !chrome.hot_posts.is_empty() {
+        html.push_str("<section class=\"widget widget-hots\"><h3 class=\"widget-title\">热门文章</h3><ul class=\"widget-list\">");
+        for post in chrome.hot_posts.iter().take(10) {
+            let title = if post.has_password() {
+                "密码保护的文章"
+            } else {
+                post.title.as_str()
+            };
+            html.push_str(&format!(
+                "<li><a href=\"{}\">{}</a> <span class=\"views\">浏览次数: {}</span></li>",
+                html_escape(&links::content_path(site, post)),
+                html_escape(title),
+                post.views.max(0),
             ));
         }
         html.push_str("</ul></section>");
@@ -606,6 +719,18 @@ fn sidebar_html(chrome: &Chrome<'_>) -> String {
                 "<li><a href=\"{}\">{}</a></li>",
                 html_escape(&href),
                 html_escape(&label)
+            ));
+        }
+        html.push_str("</ul></section>");
+    }
+    if !chrome.friend_links.is_empty() {
+        html.push_str("<section class=\"widget widget-links\"><h3 class=\"widget-title\">友情链接</h3><ul class=\"widget-list\">");
+        for link in chrome.friend_links {
+            html.push_str(&format!(
+                "<li><a href=\"{}\" title=\"{}\" target=\"_blank\" rel=\"noopener\">{}</a></li>",
+                html_escape(&link.url),
+                html_escape(&link.description),
+                html_escape(&link.name),
             ));
         }
         html.push_str("</ul></section>");

@@ -1,0 +1,153 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="renderer" content="webkit">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>{{ page_title }}</title>
+    {% if description %}<meta name="description" content="{{ description }}">{% endif %}
+    {% if keywords %}<meta name="keywords" content="{{ keywords }}">{% endif %}
+    <meta name="generator" content="Typecho 1.2.1">
+    <link rel="alternate" type="application/rss+xml" title="{{ site_title }}" href="{{ feed_abs | safe }}">
+    <link rel="alternate" type="application/atom+xml" title="{{ site_title }}" href="{{ atom_abs | safe }}">
+    {{ plugin_header | safe }}
+    {% if theme_ready %}
+    <link rel="stylesheet" href="{{ static | safe }}/css/style.css">
+    {% endif %}
+</head>
+<body id="body" class="app app-header-fixed app-aside-fix container">
+<div class="app app-aside-fix container alllayout" id="app">
+    <header id="header" class="app-header navbar box-shadow-bottom-lg fix-padding" role="menu">
+        <div id="header_left" class="text-ellipsis navbar-header bg-dark">
+            <button class="pull-right visible-xs" data-toggle-class="show" data-target=".navbar-collapse" aria-label="菜单">
+                <span class="menu-icons">☰</span>
+            </button>
+            {% if logo_url %}
+            <a class="navbar-brand" href="/"><img id="navbar-brand-day" src="{{ logo_url }}" alt="{{ site_title }}"></a>
+            {% else %}
+            <a class="navbar-brand" href="/">{{ site_title }}</a>
+            {% endif %}
+        </div>
+        <div id="header_right" class="collapse pos-rlt navbar-collapse bg-dark">
+            <ul class="nav navbar-nav hidden-sm">
+                <li><a href="/">首页</a></li>
+                {% for p in pages %}
+                <li><a href="{{ p.url | safe }}">{{ p.title }}</a></li>
+                {% endfor %}
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li>
+                    <a href="#" id="search_trigger" role="button" aria-label="搜索">搜索</a>
+                </li>
+                <li id="user_panel">
+                    {% if viewer_name %}
+                    <a href="/admin/index.php">{{ viewer_name }}</a>
+                    {% else %}
+                    <a href="/admin/login.php">登录</a>
+                    {% endif %}
+                </li>
+                <li>
+                    <a href="#" id="dark_mode_toggle" role="button" aria-label="暗色模式">暗色</a>
+                </li>
+            </ul>
+        </div>
+    </header>
+    <div id="search_modal" class="modal fade hide" tabindex="-1" role="dialog" aria-label="搜索">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content box-shadow-wrap-lg">
+                <div class="modal-header">
+                    <form method="post" action="{{ base | safe }}/" role="search">
+                        <div class="input-group">
+                            <input autocomplete="off" id="search_input" type="search" name="s" placeholder="搜索（Ctrl + K）" required>
+                            <button id="search_submit" type="submit">搜索</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <aside id="aside" class="app-aside hidden-xs bg-light" role="complementary">
+        <div class="aside-wrap">
+            <div class="navi-wrap scroll-y scroll-hide">
+                <nav class="navi clearfix" role="navigation">
+                    <ul class="nav new-nav-tab">
+                        <li><a href="/"><span>首页</span></a></li>
+                        {% for p in pages %}
+                        <li><a href="{{ p.url | safe }}"><span>{{ p.title }}</span></a></li>
+                        {% endfor %}
+                        <li>
+                            <span>Links</span>
+                            <ul class="nav nav-sub dk">
+                                <!--使用links插件，输出全站友链-->
+                                {% for l in friend_links %}
+                                <li><a rel="noopener" target="_blank" href="{{ l.url | safe }}">{{ l.name }}</a></li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                    </ul>
+                    <div class="tab-content new-nav-tab-content">
+                        <div id="widget-tabs-4-hots" class="tab-pane fade in wrapper-md active" role="tabpanel">
+                            <h5 class="widget-title">热门文章</h5>
+                            <ul class="list-group no-bg no-borders pull-in m-b-none">
+                                {% for p in hot_posts %}
+                                <li class="list-group-item">
+                                    <a href="{{ p.url | safe }}">{{ p.title }}</a>
+                                    <small class="text-muted"><span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ p.views }}</span></span></small>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        <div id="post-calendar" class="top-echart hide"></div>
+                        <div id="category-radar" class="top-echart hide"></div>
+                    </div>
+                </nav>
+            </div>
+        </div>
+        <div id="left_footer" class="aside-footer"></div>
+    </aside>
+    <div class="app-content content">
+        <div class="loading hide" id="loading">加载中……</div>
+        <main id="content" class="app-content-body animated fadeIn" role="main">
+            <div class="hbox hbox-auto-xs hbox-auto-sm">
+                {% block main %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    <div id="handsome_global_player" class="hide"></div>
+    <footer id="footer" class="app-footer" role="footer">
+        <div class="padder-sm bg-white footer_wrapper box-shadow-wrap-normal b-normal">
+            <div class="pull-right hidden-xs text-ellipsis"></div>
+            <span>&copy; {{ year }} <a href="/">{{ site_title }}</a>.</span>
+            <span>由 <a href="https://typecho.org" target="_blank">Typecho</a> 强力驱动.</span>
+        </div>
+        {{ plugin_footer | safe }}
+    </footer>
+</div>
+<script>
+window.TB = {
+    BLOG_URL: {{ base_json | safe }},
+    IS_PJAX: '1',
+    MUSIC_API: {{ meting_api_json | safe }},
+    MUSIC_API_PARSE: {{ meting_api_parse_json | safe }},
+    MUSIC_LIST: [],
+    THEME_DARK_MODE: 'light',
+    CALENDAR: {{ calendar_json | safe }},
+    CATS: {{ cats_json | safe }},
+    POST_MATHJAX: {% if has_math | default(false) %}1{% else %}0{% endif %},
+    STAR_SUCCESS: '点赞成功',
+    STAR_REPEAT: '你已经赞过了',
+    STAR_ERROR_NETWORK: '点赞请求失败'
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery-pjax@2.0.1/jquery.pjax.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/common.min.js"></script>
+{% if has_math | default(false) %}
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.min.js"></script>
+{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/aplayer@1.10.1/dist/APlayer.min.js"></script>
+{% if theme_ready %}
+<script src="{{ static | safe }}/js/site.js"></script>
+{% endif %}
+</body>
+</html>
