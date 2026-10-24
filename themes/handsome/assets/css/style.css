@@ -1,10 +1,10 @@
-/* 真液态玻璃（自写）：折射扭曲 + 流动高光 + 渐变描边。
-   结构：面板本体只负责渐变 tint 与描边；::before 做 backdrop 模糊 + SVG 位移折射；
-   ::after 做斜向流动高光。正文在上层，不进 filter，保持可读。
-   布局骨架（固定顶栏/左侧栏/主列避让/暗色/阅读模式/移动端）与之前一致。 */
+/* 液态玻璃（自写，按公开配方修正）：折射挂在面板自身的 backdrop-filter 里。
+   Chromium 下 `backdrop-filter: ... url('#lg-refract')` 真正弯折背后景物；
+   不支持 url() 的浏览器回退到 blur/saturate 毛玻璃；正文始终清晰。
+   布局骨架（固定顶栏/左侧栏/主列避让/暗色/阅读模式/移动端）保持不变。 */
 :root {
-  --glass-tint: rgba(255, 255, 255, 0.22);
-  --glass-tint-strong: rgba(255, 255, 255, 0.34);
+  --glass-tint: rgba(255, 255, 255, 0.18);
+  --glass-tint-strong: rgba(255, 255, 255, 0.26);
   --glass-shadow: 0 12px 40px rgba(31, 38, 135, 0.22);
   --glass-shadow-sm: 0 4px 16px rgba(31, 38, 135, 0.16);
   --ink: #1c2333;
@@ -29,7 +29,7 @@ a { color: var(--link); }
 .hide { display: none !important; }
 .text-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---- 液态玻璃片 ---- */
+/* ---- 液态玻璃片：折射在自身 backdrop-filter 里 ---- */
 #header.app-header,
 #aside.app-aside,
 .single-post.panel,
@@ -44,30 +44,29 @@ a { color: var(--link); }
   background:
     linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
     linear-gradient(150deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.12) 30%, rgba(255,255,255,.05) 55%, rgba(255,255,255,.5) 80%, rgba(255,255,255,.9) 100%) border-box;
+  -webkit-backdrop-filter: blur(2px) saturate(180%) brightness(1.08);
+  backdrop-filter: blur(2px) saturate(180%) brightness(1.08);
   box-shadow:
+    inset 1px 0 1px rgba(255, 255, 255, 0.5),
+    inset -1px 0 1px rgba(255, 255, 255, 0.28),
     inset 0 1px 1px rgba(255, 255, 255, 0.55),
     inset 0 -1px 2px rgba(255, 255, 255, 0.18),
-    inset 1px 0 1px rgba(255, 255, 255, 0.25),
     var(--glass-shadow);
 }
-/* 折射层：模糊 + 位移扭曲，只作用于背后景物 */
-#header.app-header::before,
-#aside.app-aside::before,
-.single-post.panel::before,
-#search_modal::before,
-#tocTree::before,
-#footer.app-footer::before,
-#handsome_global_player .aplayer::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  z-index: -1;
-  -webkit-backdrop-filter: blur(32px) saturate(2);
-  backdrop-filter: blur(32px) saturate(2);
-  filter: url(#lg-warp);
+/* 有折射能力的浏览器：弯折背后景物（顶栏/侧栏/卡片等大面板） */
+@supports ((backdrop-filter: url('#lg-refract')) or (-webkit-backdrop-filter: url('#lg-refract'))) {
+  #header.app-header,
+  #aside.app-aside,
+  .single-post.panel,
+  #search_modal,
+  #tocTree,
+  #footer.app-footer,
+  #handsome_global_player .aplayer {
+    -webkit-backdrop-filter: blur(2px) saturate(180%) brightness(1.08) url('#lg-refract');
+    backdrop-filter: blur(2px) saturate(180%) brightness(1.08) url('#lg-refract');
+  }
 }
-/* 流动高光：斜向扫过，28s 循环 */
+/* 流动高光：斜向扫过，28s 循环，screen 卖液面 */
 #header.app-header::after,
 #aside.app-aside::after,
 .single-post.panel::after,
@@ -80,11 +79,11 @@ a { color: var(--link); }
   border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(115deg,
-    transparent 32%, rgba(255,255,255,.10) 44%, rgba(255,255,255,.38) 50%,
-    rgba(255,255,255,.10) 56%, transparent 68%);
+    transparent 32%, rgba(255,255,255,.12) 44%, rgba(255,255,255,.42) 50%,
+    rgba(255,255,255,.12) 56%, transparent 68%);
   background-size: 280% 280%;
   background-position: 0% 0%;
-  mix-blend-mode: soft-light;
+  mix-blend-mode: screen;
   animation: lg-sheen 28s ease-in-out infinite alternate;
 }
 @keyframes lg-sheen {
@@ -92,13 +91,15 @@ a { color: var(--link); }
   to { background-position: 100% 100%; }
 }
 
-#header.app-header { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 50; border-radius: 20px; overflow: visible; }
+#header.app-header { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 50; border-radius: 20px; }
 #header a { color: var(--ink); }
 #header_left, #header_right { display: flex; align-items: center; gap: 12px; padding: 6px 18px; min-height: 52px; position: relative; }
 #header_right { justify-content: space-between; }
 #header_right .nav a, #dark_mode_toggle, #search_trigger {
   padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35);
   background: rgba(255,255,255,.18);
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
 }
 #header_right .nav a:hover, #dark_mode_toggle:hover, #search_trigger:hover { background: var(--glass-tint-strong); }
 .nav { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -132,6 +133,8 @@ a { color: var(--link); }
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)) padding-box,
     linear-gradient(150deg, rgba(255,255,255,.9), rgba(255,255,255,.15) 50%, rgba(255,255,255,.6)) border-box;
   box-shadow: inset 0 1px 1px rgba(255,255,255,.5), var(--glass-shadow-sm);
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
 }
 .post-actions button:hover, .support-author .like_button:hover { filter: brightness(1.06); }
 #comment-form button, #search_modal button { background: linear-gradient(rgba(10,88,202,.85), rgba(10,88,202,.85)) padding-box, linear-gradient(150deg, rgba(255,255,255,.7), rgba(255,255,255,.2)) border-box; color: #fff; }
@@ -156,18 +159,18 @@ a { color: var(--link); }
 #handsome_global_player { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 60; }
 #handsome_global_player .aplayer { margin: 0; overflow: hidden; }
 
-/* ---- 暗色液态玻璃：提高填充、减弱罩纱，底图仍可见 ---- */
+/* ---- 暗色液态玻璃：减弱罩纱，底图仍可见 ---- */
 body.dark {
-  --glass-tint: rgba(13, 18, 34, 0.42);
-  --glass-tint-strong: rgba(13, 18, 34, 0.55);
+  --glass-tint: rgba(13, 18, 34, 0.3);
+  --glass-tint-strong: rgba(13, 18, 34, 0.42);
   --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   --glass-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.45);
   --ink: #e6eaf2;
   --ink-soft: #9aa4bd;
   --link: #7aa5ff;
   background:
-    radial-gradient(1100px 500px at 12% -6%, rgba(14, 116, 144, 0.35), transparent 60%),
-    radial-gradient(900px 480px at 88% 8%, rgba(109, 40, 217, 0.38), transparent 60%),
+    radial-gradient(1100px 500px at 12% -6%, rgba(14, 116, 144, 0.3), transparent 60%),
+    radial-gradient(900px 480px at 88% 8%, rgba(109, 40, 217, 0.32), transparent 60%),
     url("../img/glass-bg.jpg") center / cover fixed,
     linear-gradient(160deg, #0b1020 0%, #131a2e 50%, #0c1a16 100%);
   color: var(--ink);
@@ -193,18 +196,12 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
     --glass-tint-strong: #1f2740;
     --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   }
-  #header.app-header::before, #aside.app-aside::before, .single-post.panel::before,
-  #search_modal::before, #tocTree::before, #footer.app-footer::before,
-  #handsome_global_player .aplayer::before,
   #header.app-header::after, #aside.app-aside::after, .single-post.panel::after,
   #search_modal::after, #tocTree::after, #footer.app-footer::after { display: none; }
 }
 
-/* 减弱透明偏好：关折射与流动高光 */
+/* 减弱透明偏好：关高光动画 */
 @media (prefers-reduced-transparency: reduce) {
-  #header.app-header::before, #aside.app-aside::before, .single-post.panel::before,
-  #search_modal::before, #tocTree::before, #footer.app-footer::before,
-  #handsome_global_player .aplayer::before { filter: none; }
   #header.app-header::after, #aside.app-aside::after, .single-post.panel::after,
   #search_modal::after, #tocTree::after, #footer.app-footer::after { animation: none; display: none; }
 }
