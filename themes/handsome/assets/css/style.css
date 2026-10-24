@@ -1,8 +1,8 @@
 /* 液态玻璃演示样式（自写）：半透明面板 +  backdrop 模糊 + 高光描边。
    布局骨架（固定顶栏/左侧栏/主列避让/暗色/阅读模式/移动端）保持不变，只换质感。 */
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.42);
-  --glass-bg-strong: rgba(255, 255, 255, 0.6);
+  --glass-bg: rgba(255, 255, 255, 0.34);
+  --glass-bg-strong: rgba(255, 255, 255, 0.5);
   --glass-brd: rgba(255, 255, 255, 0.65);
   --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.55);
   --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.18);
@@ -16,12 +16,14 @@ html, body { margin: 0; padding: 0; }
 body.app {
   font: 14px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--ink);
-  /* 柔和渐变 + 光斑，衬托玻璃模糊 */
-  background:
-    radial-gradient(1100px 500px at 12% -6%, rgba(125, 211, 252, 0.5), transparent 60%),
-    radial-gradient(900px 480px at 88% 8%, rgba(196, 181, 253, 0.5), transparent 60%),
-    radial-gradient(1000px 700px at 50% 110%, rgba(167, 243, 208, 0.45), transparent 60%),
-    linear-gradient(160deg, #eef2ff 0%, #f5f3ff 45%, #ecfdf5 100%);
+  /* 背景图 + 轻罩，让 backdrop-filter 能透出细节 */
+  background-color: #c9d4f0;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.18), rgba(236,242,255,.35)),
+    url("../img/glass-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   background-attachment: fixed;
   min-height: 100vh;
 }
@@ -39,8 +41,8 @@ a { color: var(--link); }
 .support-author .like_button,
 #handsome_global_player .aplayer {
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(18px) saturate(1.5);
-  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  backdrop-filter: blur(22px) saturate(1.6);
   border: 1px solid var(--glass-brd);
   box-shadow: var(--glass-hi), var(--glass-shadow);
   border-radius: var(--radius);
@@ -118,11 +120,14 @@ body.dark {
   --ink: #e6eaf2;
   --ink-soft: #9aa4bd;
   --link: #7aa5ff;
-  background:
-    radial-gradient(1100px 500px at 12% -6%, rgba(14, 116, 144, 0.4), transparent 60%),
-    radial-gradient(900px 480px at 88% 8%, rgba(109, 40, 217, 0.42), transparent 60%),
-    radial-gradient(1000px 700px at 50% 110%, rgba(6, 95, 70, 0.4), transparent 60%),
-    linear-gradient(160deg, #0b1020 0%, #131a2e 50%, #0c1a16 100%);
+  background-color: #0b1020;
+  background-image:
+    linear-gradient(180deg, rgba(11,16,32,.55), rgba(19,26,46,.62)),
+    url("../img/glass-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--ink);
 }
 body.dark a { color: var(--link); }
