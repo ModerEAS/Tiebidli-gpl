@@ -44,13 +44,13 @@ a { color: var(--link); }
   background:
     linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
     linear-gradient(150deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.12) 30%, rgba(255,255,255,.05) 55%, rgba(255,255,255,.5) 80%, rgba(255,255,255,.9) 100%) border-box;
-  -webkit-backdrop-filter: blur(2px) saturate(180%) brightness(1.08);
-  backdrop-filter: blur(2px) saturate(180%) brightness(1.08);
+  -webkit-backdrop-filter: blur(1px) saturate(190%) brightness(1.1);
+  backdrop-filter: blur(1px) saturate(190%) brightness(1.1);
   box-shadow:
-    inset 1px 0 1px rgba(255, 255, 255, 0.5),
-    inset -1px 0 1px rgba(255, 255, 255, 0.28),
-    inset 0 1px 1px rgba(255, 255, 255, 0.55),
-    inset 0 -1px 2px rgba(255, 255, 255, 0.18),
+    inset 1px 0 2px rgba(255, 255, 255, 0.65),
+    inset -1px 0 2px rgba(255, 255, 255, 0.35),
+    inset 0 2px 2px rgba(255, 255, 255, 0.7),
+    inset 0 -2px 3px rgba(255, 255, 255, 0.22),
     var(--glass-shadow);
 }
 /* 有折射能力的浏览器：弯折背后景物（顶栏/侧栏/卡片等大面板） */
@@ -62,8 +62,8 @@ a { color: var(--link); }
   #tocTree,
   #footer.app-footer,
   #handsome_global_player .aplayer {
-    -webkit-backdrop-filter: blur(2px) saturate(180%) brightness(1.08) url('#lg-refract');
-    backdrop-filter: blur(2px) saturate(180%) brightness(1.08) url('#lg-refract');
+    -webkit-backdrop-filter: blur(1px) saturate(190%) brightness(1.1) url('#lg-refract');
+    backdrop-filter: blur(1px) saturate(190%) brightness(1.1) url('#lg-refract');
   }
 }
 /* 流动高光：斜向扫过，28s 循环，screen 卖液面 */
@@ -91,7 +91,7 @@ a { color: var(--link); }
   to { background-position: 100% 100%; }
 }
 
-#header.app-header { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 50; border-radius: 20px; }
+#header.app-header { position: fixed; top: 12px; left: 260px; right: 12px; z-index: 50; border-radius: 20px; }
 #header a { color: var(--ink); }
 #header_left, #header_right { display: flex; align-items: center; gap: 12px; padding: 6px 18px; min-height: 52px; position: relative; }
 #header_right { justify-content: space-between; }
@@ -106,7 +106,7 @@ a { color: var(--link); }
 .nav-sub { display: flex; gap: 8px; }
 
 #aside.app-aside {
-  position: fixed; top: 88px; left: 12px; bottom: 12px; width: 236px;
+  position: fixed; top: 12px; left: 12px; bottom: 12px; width: 236px;
   overflow-y: auto; padding: 16px 14px;
 }
 .app-content { margin: 88px 12px 0 260px; padding: 4px 4px 24px; }
