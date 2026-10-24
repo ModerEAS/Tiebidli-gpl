@@ -120,7 +120,8 @@ a { color: var(--link); }
 .summary { color: var(--ink-soft); }
 .post-item-foot { list-style: none; display: flex; gap: 14px; padding: 0; color: var(--ink-soft); font-size: 12px; }
 .index-post-img .item-thumb { width: 100%; height: 190px; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,.3); border: 1px solid rgba(255,255,255,.4); }
-.entry-content { color: var(--ink); }
+.entry-content { color: var(--ink); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.12); }
+body.dark .entry-content { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); }
 .entry-content img { max-width: 100%; border-radius: 10px; }
 .entry-content pre { overflow-x: auto; background: rgba(255,255,255,.5); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.45); }
 .post-actions { display: flex; gap: 8px; margin: 12px 0; }
@@ -161,8 +162,8 @@ a { color: var(--link); }
 
 /* ---- 暗色液态玻璃：减弱罩纱，底图仍可见 ---- */
 body.dark {
-  --glass-tint: rgba(13, 18, 34, 0.3);
-  --glass-tint-strong: rgba(13, 18, 34, 0.42);
+  --glass-tint: rgba(13, 18, 34, 0.55);
+  --glass-tint-strong: rgba(13, 18, 34, 0.65);
   --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   --glass-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.45);
   --ink: #e6eaf2;
