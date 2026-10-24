@@ -16,6 +16,9 @@
 - 同上启用后，用浏览器打开首页/文章页即可看到玻璃效果：
   `assets/css/style.css` 为自写液态玻璃样式（半透明 + 模糊 + 高光描边）；
   右上角「暗色」开关可切换 `body.dark` 玻璃质感；无 `backdrop-filter` 的浏览器自动实色回退。
+- 真液态玻璃版：面板 `::before` 层做 `backdrop-filter` 模糊 + SVG
+  `feTurbulence`/`feDisplacementMap` 折射（`base.html` 内联自写 filter 节点，
+  正文不进 filter 保持可读），`::after` 层做 28s 循环流动高光，渐变描边代替单线边框。
 
 ## 落地（引擎侧薄能力）
 
