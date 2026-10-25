@@ -42,6 +42,10 @@
             {% else %}
             <a class="navbar-brand" href="/">{{ site_title }}</a>
             {% endif %}
+            <span class="header-quick">
+                <a href="#" id="search_trigger" role="button" aria-label="搜索">⌕</a>
+                <a href="#" id="dark_mode_toggle" role="button" aria-label="明暗切换">暗色</a>
+            </span>
         </div>
         <div id="header_right" class="collapse pos-rlt navbar-collapse bg-dark">
             <form id="searchform1" class="searchform navbar-form navbar-form-sm navbar-left shift" method="post" action="{{ base | safe }}/" role="search">
@@ -53,18 +57,12 @@
                 </div>
             </form>
             <ul class="nav navbar-nav navbar-right">
-                <li>
-                    <a href="#" id="search_trigger" role="button" aria-label="搜索">⌕</a>
-                </li>
                 <li id="user_panel">
                     {% if viewer_name %}
                     <a href="/admin/index.php">{{ viewer_name }}</a>
                     {% else %}
                     <a href="/admin/login.php">登录</a>
                     {% endif %}
-                </li>
-                <li>
-                    <a href="#" id="dark_mode_toggle" role="button" aria-label="暗色模式">暗色</a>
                 </li>
             </ul>
         </div>

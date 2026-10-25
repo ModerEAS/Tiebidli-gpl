@@ -92,7 +92,7 @@ a:hover { text-decoration: underline; }
 #header a { color: var(--ink); }
 #header_left, #header_right { display: flex; align-items: center; gap: 12px; padding: 6px 18px; min-height: 52px; position: relative; }
 .navbar-brand { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-#header_right .nav a, #dark_mode_toggle, #search_trigger { font-size: 13px; letter-spacing: -0.01em; }
+#header_right .nav a { font-size: 13px; letter-spacing: -0.01em; }
 #aside.app-aside { letter-spacing: -0.01em; }
 #search_trigger { padding: 6px 11px; }
 #header_right { justify-content: space-between; flex: 1; }
@@ -100,11 +100,17 @@ a:hover { text-decoration: underline; }
 #header .searchform .input-group { display: flex; gap: 6px; }
 #header .searchform input[type="search"] { flex: 1; min-width: 0; padding: 6px 12px; font-size: 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: var(--ink); }
 #header .searchform button { padding: 6px 12px; font-size: 13px; border-radius: 10px; cursor: pointer; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.12); color: var(--ink); }
-#header_right .nav a, #dark_mode_toggle, #search_trigger {
+#header_right .nav a {
   padding: 5px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.22);
-  background: rgba(255,255,255,.08);
+  background: rgba(255,255,255,.08); font-size: 13px; letter-spacing: -0.01em;
 }
-#header_right .nav a:hover, #dark_mode_toggle:hover, #search_trigger:hover { background: rgba(255,255,255,.12); }
+#header_right .nav a:hover { background: rgba(255,255,255,.12); }
+.header-quick { display: flex; align-items: center; gap: 4px; margin-left: 2px; }
+.header-quick a {
+  padding: 5px 9px; border-radius: 10px; font-size: 13px; letter-spacing: -0.01em;
+  border: 1px solid transparent; color: var(--ink);
+}
+.header-quick a:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); }
 .nav { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .nav-sub { display: flex; gap: 8px; }
 
@@ -242,14 +248,40 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
 }
 
 @media (max-width: 767px) {
-  #header.app-header { left: 8px; right: 8px; }
-  #aside.app-aside { display: none; top: 76px; }
+  #header.app-header { left: 0; right: 0; border-radius: 0 0 12px 12px; }
+  #header_left, #header_right { padding: 6px 12px; gap: 8px; }
+  .navbar-brand { font-size: 16px; }
+  #header_right { display: none; }
+  #header_right.show {
+    display: block; position: absolute; top: 100%; left: 8px; right: 8px;
+    padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.22);
+    background: linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong));
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    box-shadow: var(--glass-shadow);
+  }
+  #header_right.show .searchform { max-width: none; margin: 0 0 8px; }
+  #header_right.show .nav { flex-direction: column; align-items: stretch; }
+  #header_right.show .nav a { display: block; text-align: center; }
+  #aside.app-aside { display: none; top: 68px; }
   #aside.app-aside.show { display: block; z-index: 80; }
   #rightAside { display: none; }
   .app-content, #footer.app-footer, body.read-mode .app-content, body.read-mode #footer.app-footer { margin-left: 8px; margin-right: 8px; }
-  .app-content { margin-top: 72px; }
+  .app-content { margin-top: 64px; }
+  .single-post.panel { padding: 16px; margin-bottom: 12px; border-radius: 12px; }
+  .index-post-title { font-size: 17px; }
+  .summary { font-size: 13px; }
+  .index-post-img .item-thumb { height: 140px; }
+  .profile-strip { padding: 14px 16px; margin-bottom: 12px; }
+  .profile-avatar img { width: 44px; height: 44px; }
+  .profile-title { font-size: 19px; }
+  #tocTree { display: none; }
   .hidden-xs { display: none !important; }
   .visible-xs { display: inline-block !important; }
+}
+@media (max-width: 390px) {
+  #header_left, #header_right { padding: 6px 10px; gap: 6px; }
+  .navbar-brand { font-size: 15px; }
+  .post-item-foot { gap: 10px; flex-wrap: wrap; }
 }
 @media (min-width: 768px) {
   .visible-xs { display: none !important; }
