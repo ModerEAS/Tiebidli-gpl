@@ -1,16 +1,17 @@
-/* 液态玻璃（自写，按公开配方修正）：折射挂在面板自身的 backdrop-filter 里。
-   Chromium 下 `backdrop-filter: ... url('#lg-refract')` 真正弯折背后景物；
-   不支持 url() 的浏览器回退到 blur/saturate 毛玻璃；正文始终清晰。
-   布局骨架（固定顶栏/左侧栏/主列避让/暗色/阅读模式/移动端）保持不变。 */
+/* 现网观感重画 + 克制液态玻璃（自写）：深色优先，冷静青色壁纸打底。
+   顶栏全宽（含品牌角），侧栏在其下方窄列；卡片半透明深色，大圆角；点缀薄荷青。
+   折射只挂顶栏/侧栏/卡片（Chromium url 滤镜，其它回退模糊），正文始终清晰。 */
 :root {
-  --glass-tint: rgba(255, 255, 255, 0.18);
-  --glass-tint-strong: rgba(255, 255, 255, 0.26);
-  --glass-shadow: 0 12px 40px rgba(31, 38, 135, 0.22);
-  --glass-shadow-sm: 0 4px 16px rgba(31, 38, 135, 0.16);
-  --ink: #1c2333;
-  --ink-soft: #4a5570;
-  --link: #0a58ca;
-  --radius: 18px;
+  --glass-tint: rgba(18, 26, 40, 0.52);
+  --glass-tint-strong: rgba(18, 26, 40, 0.66);
+  --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --glass-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --ink: #f2f5fb;
+  --ink-soft: #b9c4d6;
+  --link: #53e5d8;
+  --link-dim: #7aa5ff;
+  --chip: rgba(83, 229, 216, 0.16);
+  --radius: 16px;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -18,18 +19,15 @@ body.app {
   font: 14px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(1100px 500px at 12% -6%, rgba(125, 211, 252, 0.55), transparent 60%),
-    radial-gradient(900px 480px at 88% 8%, rgba(196, 181, 253, 0.55), transparent 60%),
-    radial-gradient(1000px 700px at 50% 110%, rgba(167, 243, 208, 0.5), transparent 60%),
     url("../img/glass-bg.jpg") center / cover fixed,
-    linear-gradient(160deg, #eef2ff 0%, #f5f3ff 45%, #ecfdf5 100%);
+    linear-gradient(160deg, #0d2830 0%, #123a44 55%, #0b1c26 100%);
   min-height: 100vh;
 }
 a { color: var(--link); }
 .hide { display: none !important; }
 .text-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---- 液态玻璃片：折射在自身 backdrop-filter 里 ---- */
+/* ---- 玻璃片：折射在自身 backdrop-filter 里 ---- */
 #header.app-header,
 #aside.app-aside,
 .single-post.panel,
@@ -43,44 +41,37 @@ a { color: var(--link); }
   border-radius: var(--radius);
   background:
     linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
-    linear-gradient(150deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,.12) 30%, rgba(255,255,255,.05) 55%, rgba(255,255,255,.5) 80%, rgba(255,255,255,.9) 100%) border-box;
-  -webkit-backdrop-filter: blur(1px) saturate(190%) brightness(1.1);
-  backdrop-filter: blur(1px) saturate(190%) brightness(1.1);
+    linear-gradient(150deg, rgba(255,255,255,.35) 0%, rgba(255,255,255,.06) 30%, rgba(255,255,255,.03) 55%, rgba(255,255,255,.22) 80%, rgba(255,255,255,.4) 100%) border-box;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) brightness(1.02);
+  backdrop-filter: blur(14px) saturate(160%) brightness(1.02);
   box-shadow:
-    inset 1px 0 2px rgba(255, 255, 255, 0.65),
-    inset -1px 0 2px rgba(255, 255, 255, 0.35),
-    inset 0 2px 2px rgba(255, 255, 255, 0.7),
-    inset 0 -2px 3px rgba(255, 255, 255, 0.22),
+    inset 1px 0 1px rgba(255, 255, 255, 0.28),
+    inset -1px 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.08),
     var(--glass-shadow);
 }
-/* 有折射能力的浏览器：弯折背后景物（顶栏/侧栏/卡片等大面板） */
+/* 有折射能力的浏览器：只给顶栏/侧栏/卡片挂 url 位移 */
 @supports ((backdrop-filter: url('#lg-refract')) or (-webkit-backdrop-filter: url('#lg-refract'))) {
   #header.app-header,
   #aside.app-aside,
-  .single-post.panel,
-  #search_modal,
-  #tocTree,
-  #footer.app-footer,
-  #handsome_global_player .aplayer {
-    -webkit-backdrop-filter: blur(1px) saturate(190%) brightness(1.1) url('#lg-refract');
-    backdrop-filter: blur(1px) saturate(190%) brightness(1.1) url('#lg-refract');
+  .single-post.panel {
+    -webkit-backdrop-filter: blur(14px) saturate(160%) brightness(1.02) url('#lg-refract');
+    backdrop-filter: blur(14px) saturate(160%) brightness(1.02) url('#lg-refract');
   }
 }
-/* 流动高光：斜向扫过，28s 循环，screen 卖液面 */
+/* 流动高光：斜向扫过，28s 循环，screen 提亮 */
 #header.app-header::after,
 #aside.app-aside::after,
-.single-post.panel::after,
-#search_modal::after,
-#tocTree::after,
-#footer.app-footer::after {
+.single-post.panel::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(115deg,
-    transparent 32%, rgba(255,255,255,.12) 44%, rgba(255,255,255,.42) 50%,
-    rgba(255,255,255,.12) 56%, transparent 68%);
+    transparent 32%, rgba(255,255,255,.06) 44%, rgba(255,255,255,.2) 50%,
+    rgba(255,255,255,.06) 56%, transparent 68%);
   background-size: 280% 280%;
   background-position: 0% 0%;
   mix-blend-mode: screen;
@@ -91,64 +82,70 @@ a { color: var(--link); }
   to { background-position: 100% 100%; }
 }
 
-#header.app-header { position: fixed; top: 12px; left: 260px; right: 12px; z-index: 50; border-radius: 20px; }
+/* 顶栏全宽，品牌角在左 */
+#header.app-header { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 50; border-radius: 18px; }
 #header a { color: var(--ink); }
 #header_left, #header_right { display: flex; align-items: center; gap: 12px; padding: 6px 18px; min-height: 52px; position: relative; }
 #header_right { justify-content: space-between; }
 #header_right .nav a, #dark_mode_toggle, #search_trigger {
-  padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35);
-  background: rgba(255,255,255,.18);
-  -webkit-backdrop-filter: blur(8px) saturate(160%);
-  backdrop-filter: blur(8px) saturate(160%);
+  padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22);
+  background: rgba(255,255,255,.08);
 }
-#header_right .nav a:hover, #dark_mode_toggle:hover, #search_trigger:hover { background: var(--glass-tint-strong); }
+#header_right .nav a:hover, #dark_mode_toggle:hover, #search_trigger:hover { background: rgba(83,229,216,.18); }
 .nav { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .nav-sub { display: flex; gap: 8px; }
 
+/* 侧栏：顶栏下方窄列，图标+短标签 */
 #aside.app-aside {
-  position: fixed; top: 12px; left: 12px; bottom: 12px; width: 236px;
-  overflow-y: auto; padding: 16px 14px;
+  position: fixed; top: 88px; left: 12px; bottom: 12px; width: 190px;
+  overflow-y: auto; padding: 16px 12px; font-size: 13px;
 }
-.app-content { margin: 88px 12px 0 260px; padding: 4px 4px 24px; }
+#aside.app-aside .nav { flex-direction: column; gap: 2px; }
+#aside.app-aside .nav > li > a,
+#aside.app-aside .nav > li > span { display: block; padding: 7px 10px; border-radius: 10px; }
+#aside.app-aside .nav > li > a:hover { background: rgba(83,229,216,.14); }
+.app-content { margin: 88px 12px 0 214px; padding: 4px 4px 24px; }
 .app-content-body { max-width: 880px; }
-#footer.app-footer { margin-left: 260px; margin-right: 12px; margin-bottom: 12px; padding: 14px 18px; color: var(--ink-soft); font-size: 12px; }
+#footer.app-footer { margin-left: 214px; margin-right: 12px; margin-bottom: 12px; padding: 14px 18px; color: var(--ink-soft); font-size: 12px; }
 
-.single-post.panel { padding: 22px; margin-bottom: 18px; }
+/* 卡片：深色半透明，大圆角；标题粗白，摘要次之，meta 更淡 */
+.single-post.panel { padding: 22px; margin-bottom: 18px; border-radius: 18px; }
 .post-meta { margin-top: 8px; }
-.index-post-title { margin: 0; font-size: 21px; }
+.index-post-title { margin: 0; font-size: 21px; font-weight: 600; }
 .index-post-title a { color: var(--ink); text-decoration: none; }
 .summary { color: var(--ink-soft); }
 .post-item-foot { list-style: none; display: flex; gap: 14px; padding: 0; color: var(--ink-soft); font-size: 12px; }
-.index-post-img .item-thumb { width: 100%; height: 190px; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,.3); border: 1px solid rgba(255,255,255,.4); }
-.entry-content { color: var(--ink); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.12); }
-body.dark .entry-content { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); }
+.post-item-foot .meta-views { background: var(--chip); border-radius: 999px; padding: 1px 10px; }
+.index-post-img .item-thumb { width: 100%; height: 190px; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); }
+.entry-content { color: var(--ink); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); }
 .entry-content img { max-width: 100%; border-radius: 10px; }
-.entry-content pre { overflow-x: auto; background: rgba(255,255,255,.5); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.45); }
+.entry-content pre { overflow-x: auto; background: rgba(0,0,0,.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12); }
+.entry-content code { color: #9be8de; }
 .post-actions { display: flex; gap: 8px; margin: 12px 0; }
 .post-actions button, .support-author .like_button,
 #comment-form button, #search_modal button {
   position: relative;
   padding: 8px 18px; border-radius: 999px; cursor: pointer; color: var(--ink); font-size: 14px;
-  border: 1px solid rgba(255,255,255,.45);
+  border: 1px solid rgba(255,255,255,.25);
   background:
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)) padding-box,
-    linear-gradient(150deg, rgba(255,255,255,.9), rgba(255,255,255,.15) 50%, rgba(255,255,255,.6)) border-box;
-  box-shadow: inset 0 1px 1px rgba(255,255,255,.5), var(--glass-shadow-sm);
-  -webkit-backdrop-filter: blur(8px) saturate(160%);
-  backdrop-filter: blur(8px) saturate(160%);
+    linear-gradient(150deg, rgba(255,255,255,.4), rgba(255,255,255,.08) 50%, rgba(255,255,255,.3)) border-box;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.25), var(--glass-shadow-sm);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+  backdrop-filter: blur(8px) saturate(150%);
 }
-.post-actions button:hover, .support-author .like_button:hover { filter: brightness(1.06); }
-#comment-form button, #search_modal button { background: linear-gradient(rgba(10,88,202,.85), rgba(10,88,202,.85)) padding-box, linear-gradient(150deg, rgba(255,255,255,.7), rgba(255,255,255,.2)) border-box; color: #fff; }
+.post-actions button:hover, .support-author .like_button:hover { filter: brightness(1.12); }
+#comment-form button, #search_modal button { background: linear-gradient(rgba(20,120,110,.9), rgba(20,120,110,.9)) padding-box, linear-gradient(150deg, rgba(255,255,255,.4), rgba(255,255,255,.1)) border-box; color: #fff; }
 .post-neighbors { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; }
 
 #comment-form input, #comment-form textarea {
   display: block; width: 100%; max-width: 560px; margin: 4px 0 10px; padding: 8px 12px;
-  border-radius: 10px; border: 1px solid rgba(255,255,255,.5);
-  background: rgba(255,255,255,.5); color: var(--ink);
+  border-radius: 10px; border: 1px solid rgba(255,255,255,.25);
+  background: rgba(0,0,0,.3); color: var(--ink);
 }
 #search_modal input[type="search"] {
   width: 100%; padding: 10px 14px; border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.55); color: var(--ink);
+  border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.3); color: var(--ink);
 }
 .comment-list { list-style: none; padding-left: 0; }
 .comment-children { margin-left: 24px; }
@@ -160,27 +157,28 @@ body.dark .entry-content { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); }
 #handsome_global_player { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 60; }
 #handsome_global_player .aplayer { margin: 0; overflow: hidden; }
 
-/* ---- 暗色液态玻璃：减弱罩纱，底图仍可见 ---- */
-body.dark {
-  --glass-tint: rgba(13, 18, 34, 0.55);
-  --glass-tint-strong: rgba(13, 18, 34, 0.65);
-  --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --glass-shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --ink: #e6eaf2;
-  --ink-soft: #9aa4bd;
-  --link: #7aa5ff;
-  background:
-    radial-gradient(1100px 500px at 12% -6%, rgba(14, 116, 144, 0.3), transparent 60%),
-    radial-gradient(900px 480px at 88% 8%, rgba(109, 40, 217, 0.32), transparent 60%),
-    url("../img/glass-bg.jpg") center / cover fixed,
-    linear-gradient(160deg, #0b1020 0%, #131a2e 50%, #0c1a16 100%);
+/* ---- 浅色模式（切换用）：干净浅底白卡 ---- */
+body.light {
+  --glass-tint: rgba(255, 255, 255, 0.72);
+  --glass-tint-strong: rgba(255, 255, 255, 0.85);
+  --glass-shadow: 0 12px 32px rgba(31, 60, 90, 0.16);
+  --glass-shadow-sm: 0 4px 14px rgba(31, 60, 90, 0.12);
+  --ink: #1c2333;
+  --ink-soft: #5a6a84;
+  --link: #0a7d74;
+  --link-dim: #0a58ca;
+  --chip: rgba(10, 125, 116, 0.12);
+  background: linear-gradient(160deg, #eef3f6 0%, #e8eef3 55%, #dfe9ec 100%);
   color: var(--ink);
 }
+body.light a { color: var(--link); }
+body.light .entry-content { text-shadow: none; }
+body.light .entry-content pre { background: rgba(255,255,255,.8); }
+body.light .entry-content code { color: #0a7d74; }
+body.light #comment-form input, body.light #comment-form textarea,
+body.light #search_modal input[type="search"] { background: rgba(255,255,255,.9); }
+body.dark { color: var(--ink); }
 body.dark a { color: var(--link); }
-body.dark .entry-content pre, body.dark #comment-form input, body.dark #comment-form textarea,
-body.dark #search_modal input[type="search"], body.dark .index-post-img .item-thumb {
-  background: rgba(255,255,255,.07); color: var(--ink);
-}
 body.read-mode #aside.app-aside, body.read-mode #header_right { display: none; }
 body.read-mode .app-content { margin-left: 12px; }
 body.read-mode #footer.app-footer { margin-left: 12px; }
@@ -188,23 +186,21 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
 /* 无 backdrop-filter 回退：实色面板，保证可读 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root {
-    --glass-tint: #f2f5fb;
-    --glass-tint-strong: #ffffff;
-    --glass-shadow: 0 4px 16px rgba(31, 38, 135, 0.12);
-  }
-  body.dark {
-    --glass-tint: #161b2a;
-    --glass-tint-strong: #1f2740;
+    --glass-tint: #152030;
+    --glass-tint-strong: #1b2940;
     --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   }
-  #header.app-header::after, #aside.app-aside::after, .single-post.panel::after,
-  #search_modal::after, #tocTree::after, #footer.app-footer::after { display: none; }
+  body.light {
+    --glass-tint: #ffffff;
+    --glass-tint-strong: #ffffff;
+    --glass-shadow: 0 4px 16px rgba(31, 60, 90, 0.12);
+  }
+  #header.app-header::after, #aside.app-aside::after, .single-post.panel::after { display: none; }
 }
 
 /* 减弱透明偏好：关高光动画 */
 @media (prefers-reduced-transparency: reduce) {
-  #header.app-header::after, #aside.app-aside::after, .single-post.panel::after,
-  #search_modal::after, #tocTree::after, #footer.app-footer::after { animation: none; display: none; }
+  #header.app-header::after, #aside.app-aside::after, .single-post.panel::after { animation: none; display: none; }
 }
 
 @media (max-width: 767px) {

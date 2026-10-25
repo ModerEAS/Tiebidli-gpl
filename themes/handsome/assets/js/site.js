@@ -11,14 +11,22 @@
 
   onReady(function () {
     // 暗色开关（默认 light，与 LocalConst THEME_DARK_MODE 一致）。
-    var dark = null;
-    try { dark = localStorage.getItem('tb-dark'); } catch (e) {}
-    if (dark === '1') document.body.classList.add('dark');
+    // 深浅色开关（默认深色贴近现网观感；light 为干净浅色备选）。
     var toggle = document.getElementById('dark_mode_toggle');
+    function paintToggle() {
+      if (toggle) toggle.textContent = document.body.classList.contains('light') ? '暗色' : '浅色';
+    }
+    var light = null;
+    try { light = localStorage.getItem('tb-light'); } catch (e) {}
+    if (light === '1') document.body.classList.add('light');
+    else document.body.classList.add('dark');
+    paintToggle();
     if (toggle) toggle.addEventListener('click', function (ev) {
       ev.preventDefault();
-      var on = document.body.classList.toggle('dark');
-      try { localStorage.setItem('tb-dark', on ? '1' : '0'); } catch (e) {}
+      var lightNow = document.body.classList.toggle('light');
+      document.body.classList.toggle('dark', !lightNow);
+      try { localStorage.setItem('tb-light', lightNow ? '1' : '0'); } catch (e) {}
+      paintToggle();
     });
 
     // 移动端导航 + 通用 toggle。
@@ -210,7 +218,7 @@
         } catch (e) { return null; }
       }
       function applyFallback() {
-        var light = !document.body.classList.contains('dark');
+        var light = document.body.classList.contains('light');
         document.querySelectorAll(SELECTORS.join(',')).forEach(function (el) {
           setPalette(el, light ? 'dark' : 'light');
         });

@@ -11,6 +11,10 @@
   对齐静态路径；后台「外观」页会列出该目录）。
 - 后台把 `options.theme` 设为 `handsome`（或保持默认，外观只影响静态前缀）。
 
+## 预览
+- `LISTEN=127.0.0.1:8091 THEME_DIR=<repo>/themes/handsome THEME_STATIC_DIR=<repo>/themes/handsome DATABASE_URL=sqlite:///tmp/tiebidli-glass.db` 启动后浏览器开 `http://127.0.0.1:8091/`。
+- 默认即现网式深色玻璃（青色低多边形壁纸为自生成底图）；右上角按钮可在深/浅色间切换；无 `backdrop-filter` 自动实色回退。
+
 ## 预览（液态玻璃演示样式）
 
 - 同上启用后，用浏览器打开首页/文章页即可看到玻璃效果：
