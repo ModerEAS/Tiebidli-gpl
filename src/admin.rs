@@ -3240,6 +3240,12 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
     let recent = state.db.recent_comments(5, now).await.unwrap_or_default();
     let hot_posts: Vec<Post> = Vec::new();
     let friend_links: Vec<crate::friend_links::FriendLink> = Vec::new();
+    let stats = state.db.stats(now).await.unwrap_or(crate::repo::Stats {
+        posts: 0,
+        comments: 0,
+        first_created: 0,
+        last_activity: 0,
+    });
     let chrome = Chrome {
         cfg: &state.cfg,
         site: &site,
@@ -3249,6 +3255,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         recent: &recent,
         hot_posts: &hot_posts,
         friend_links: &friend_links,
+        stats: &stats,
         now,
         cookies: HashMap::new(),
         viewer_name: None,

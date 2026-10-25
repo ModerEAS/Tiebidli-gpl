@@ -785,6 +785,13 @@ async fn theme_parity_layout_and_actions() {
         "app-content-body",
         "app-footer",
         "search_modal",
+        "searchform1",
+        "aside-user",
+        "rightAside",
+        "widget-tabs-4-comments",
+        "blog_info",
+        "tag_cloud",
+        "profile-strip",
     ] {
         assert!(home.contains(needle), "missing {needle}");
     }

@@ -44,12 +44,14 @@
             {% endif %}
         </div>
         <div id="header_right" class="collapse pos-rlt navbar-collapse bg-dark">
-            <ul class="nav navbar-nav hidden-sm">
-                <li><a href="/">首页</a></li>
-                {% for p in pages %}
-                <li><a href="{{ p.url | safe }}">{{ p.title }}</a></li>
-                {% endfor %}
-            </ul>
+            <form id="searchform1" class="searchform navbar-form navbar-form-sm navbar-left shift" method="post" action="{{ base | safe }}/" role="search">
+                <div class="form-group">
+                    <div class="input-group rounded bg-white-pure box-shadow-wrap-lg">
+                        <input autocomplete="off" id="search_input" type="search" name="s" class="transparent rounded form-control input-sm no-borders padder" required placeholder="搜索（Ctrl + K）">
+                        <button id="search_submit" type="submit" aria-label="搜索">搜</button>
+                    </div>
+                </div>
+            </form>
             <ul class="nav navbar-nav navbar-right">
                 <li>
                     <a href="#" id="search_trigger" role="button" aria-label="搜索">搜索</a>
@@ -84,6 +86,17 @@
     <aside id="aside" class="app-aside hidden-xs bg-light" role="complementary">
         <div class="aside-wrap">
             <div class="navi-wrap scroll-y scroll-hide">
+                <div class="clearfix hidden-xs text-center" id="aside-user">
+                    <div class="dropdown wrapper vertical-wrapper">
+                        <a href="/">
+                            {% if logo_url %}
+                            <span class="thumb-lg avatar"><img src="{{ logo_url }}" alt="{{ site_title }}"></span>
+                            {% endif %}
+                            <span class="aside-user-name">{{ site_title }}</span>
+                        </a>
+                        {% if site_description %}<p class="aside-user-desc text-muted">{{ site_description }}</p>{% endif %}
+                    </div>
+                </div>
                 <nav class="navi clearfix" role="navigation">
                     <ul class="nav new-nav-tab">
                         <li><a href="/"><span>首页</span></a></li>
@@ -91,42 +104,106 @@
                         <li><a href="{{ p.url | safe }}"><span>{{ p.title }}</span></a></li>
                         {% endfor %}
                         <li>
-                            <span>Links</span>
-                            <ul class="nav nav-sub dk">
-                                <!--使用links插件，输出全站友链-->
-                                {% for l in friend_links %}
-                                <li><a rel="noopener" target="_blank" href="{{ l.url | safe }}">{{ l.name }}</a></li>
-                                {% endfor %}
-                            </ul>
+                            <details open>
+                                <summary><span>Categories</span></summary>
+                                <ul class="nav nav-sub dk">
+                                    {% for c in categories %}
+                                    <li><a href="{{ c.url | safe }}">{{ c.name }} ({{ c.count }})</a></li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
+                        </li>
+                        <li>
+                            <details>
+                                <summary><span>Pages</span></summary>
+                                <ul class="nav nav-sub dk">
+                                    {% for p in pages %}
+                                    <li><a href="{{ p.url | safe }}">{{ p.title }}</a></li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
+                        </li>
+                        <li>
+                            <details>
+                                <summary><span>Links</span></summary>
+                                <ul class="nav nav-sub dk">
+                                    <!--使用links插件，输出全站友链-->
+                                    {% for l in friend_links %}
+                                    <li><a rel="noopener" target="_blank" href="{{ l.url | safe }}">{{ l.name }}</a></li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
                         </li>
                     </ul>
                     <div class="tab-content new-nav-tab-content">
-                        <div id="widget-tabs-4-hots" class="tab-pane fade in wrapper-md active" role="tabpanel">
-                            <h5 class="widget-title">热门文章</h5>
-                            <ul class="list-group no-bg no-borders pull-in m-b-none">
-                                {% for p in hot_posts %}
-                                <li class="list-group-item">
-                                    <a href="{{ p.url | safe }}">{{ p.title }}</a>
-                                    <small class="text-muted"><span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ p.views }}</span></span></small>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
                         <div id="post-calendar" class="top-echart hide"></div>
                         <div id="category-radar" class="top-echart hide"></div>
                     </div>
                 </nav>
             </div>
         </div>
-        <div id="left_footer" class="aside-footer"></div>
+        <div id="left_footer" class="aside-footer">
+            <a href="{{ feed_url | safe }}" aria-label="RSS">RSS</a>
+            <a href="/admin/index.php" aria-label="后台">后台</a>
+        </div>
     </aside>
     <div class="app-content content">
         <div class="loading hide" id="loading">加载中……</div>
-        <main id="content" class="app-content-body animated fadeIn" role="main">
-            <div class="hbox hbox-auto-xs hbox-auto-sm">
+        <div class="hbox hbox-auto-xs hbox-auto-sm">
+            <main id="content" class="app-content-body animated fadeIn" role="main">
                 {% block main %}{% endblock %}
-            </div>
-        </main>
+            </main>
+            <aside id="rightAside" class="asideBar" role="complementary">
+                <div id="sidebar">
+                    <section id="right_first_section" class="widget widget_tabs clear">
+                        <ul class="nav nav-tabs nav-justified box-shadow-wrap-normal tablist new-nav-tab" role="tablist">
+                            <li class="active" role="presentation"><a data-target="#widget-tabs-4-hots" role="tab">热门</a></li>
+                            <li role="presentation"><a data-target="#widget-tabs-4-comments" role="tab">评论</a></li>
+                        </ul>
+                        <div class="tab-content new-nav-tab-content">
+                            <div id="widget-tabs-4-hots" class="tab-pane fade in wrapper-md active" role="tabpanel">
+                                <h5 class="widget-title">热门文章</h5>
+                                <ul class="list-group no-bg no-borders pull-in m-b-none">
+                                    {% for p in hot_posts %}
+                                    <li class="list-group-item">
+                                        <a href="{{ p.url | safe }}">{{ p.title }}</a>
+                                        <small class="text-muted"><span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ p.views }}</span></span></small>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div id="widget-tabs-4-comments" class="tab-pane fade wrapper-md" role="tabpanel">
+                                <h5 class="widget-title">最新评论</h5>
+                                <ul class="list-group no-bg no-borders pull-in m-b-none">
+                                    {% for c in recent_comments %}
+                                    <li class="list-group-item">
+                                        <span>{{ c.author }}</span>
+                                        <a href="{{ c.url | safe }}">{{ c.excerpt }}</a>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+                    <section id="blog_info" class="widget widget_categories wrapper-md padder-v-none clear">
+                        <h5 class="widget-title m-t-none">Blog Info</h5>
+                        <ul class="list-group box-shadow-wrap-normal">
+                            <li class="list-group-item text-second"><span>Posts Num</span><span class="badge pull-right">{{ site_stats.posts }}</span></li>
+                            <li class="list-group-item text-second"><span>Comments Num</span><span class="badge pull-right">{{ site_stats.comments }}</span></li>
+                            <li class="list-group-item text-second"><span>Operating Days</span><span class="badge pull-right">{{ site_stats.days }}</span></li>
+                        </ul>
+                    </section>
+                    <section id="tag_cloud" class="widget widget_tag_cloud wrapper-md padder-v-none clear">
+                        <h5 class="widget-title m-t-none">Tag cloud</h5>
+                        <div class="tags l-h-2x panel wrapper-sm padder-v-ssm">
+                            {% for t in all_tags %}
+                            <a href="{{ t.url | safe }}" class="label badge">{{ t.name }}</a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                </div>
+            </aside>
+        </div>
     </div>
     <div id="handsome_global_player" class="hide"></div>
     <footer id="footer" class="app-footer" role="footer">

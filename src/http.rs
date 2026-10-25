@@ -8,7 +8,7 @@ use crate::feed::{self, FeedKind};
 use crate::links::{self, category_vals};
 use crate::model::{Comment, Post, Site};
 use crate::render::{Chrome, SingleView};
-use crate::repo::{ListFilter, NewComment};
+use crate::repo::{ListFilter, NewComment, Stats};
 use crate::text::{self, trunc_bytes};
 use crate::theme::{self, Renderer};
 use crate::write;
@@ -217,6 +217,12 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
         archives,
         hot_posts: hot_posts(state, &site, now).await,
         friend_links: friend_links_ten(state, &site).await,
+        stats: state.db.stats(now).await.unwrap_or(Stats {
+            posts: 0,
+            comments: 0,
+            first_created: 0,
+            last_activity: 0,
+        }),
     };
     let root = auth::site_root(
         &state.cfg.site_url,
@@ -263,6 +269,7 @@ struct ChromeBag {
     archives: Vec<(i32, u32, i64)>,
     hot_posts: Vec<Post>,
     friend_links: Vec<crate::friend_links::FriendLink>,
+    stats: Stats,
 }
 
 /// 侧栏热门：Access 启用时按浏览数，否则按评论数（失败都回空，不阻塞渲染）。
@@ -2059,6 +2066,7 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
         recent: &ctx.bag.recent,
         hot_posts: &ctx.bag.hot_posts,
         friend_links: &ctx.bag.friend_links,
+        stats: &ctx.bag.stats,
         now: ctx.now,
         cookies,
         viewer_name: ctx.viewer_name,

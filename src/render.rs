@@ -15,6 +15,7 @@ pub struct Chrome<'a> {
     pub recent: &'a [(Comment, Post)],
     pub hot_posts: &'a [Post],
     pub friend_links: &'a [crate::friend_links::FriendLink],
+    pub stats: &'a crate::repo::Stats,
     pub viewer_is_editor: bool,
     pub now: i64,
     pub cookies: HashMap<String, String>,
@@ -631,6 +632,10 @@ fn shell(
         "archives_list": archives_list,
         "recent_posts": recent_posts,
         "recent_comments": recent_comments,
+        "all_tags": site.tags.iter().map(|t| json!({
+            "name": t.name, "url": links::tag_path(site, t), "count": t.count,
+        })).collect::<Vec<_>>(),
+        "site_stats": site_stats_json(chrome),
         "meting_api": format!("{meting_base}?server=:server&type=:type&id=:id&auth=:auth&r=:r"),
         "meting_api_parse": format!("{meting_base}?do=parse"),
         "calendar_json": serde_json::to_string(&archives_list).unwrap_or_else(|_| "[]".into()),
@@ -649,6 +654,21 @@ fn sidebar_on(site: &Site, key: &str) -> bool {
         None => true,
         Some(value) => value.string_list().iter().any(|item| item == key),
     }
+}
+
+/// 站点统计（Blog Info）：文章数 / 评论数 / 运行天数 / 最后活动。
+fn site_stats_json(chrome: &Chrome<'_>) -> Value {
+    let days = if chrome.stats.first_created > 0 && chrome.now >= chrome.stats.first_created {
+        (chrome.now - chrome.stats.first_created) / 86400 + 1
+    } else {
+        0
+    };
+    json!({
+        "posts": chrome.stats.posts,
+        "comments": chrome.stats.comments,
+        "days": days,
+        "last_activity": chrome.stats.last_activity,
+    })
 }
 
 fn sidebar_html(chrome: &Chrome<'_>) -> String {

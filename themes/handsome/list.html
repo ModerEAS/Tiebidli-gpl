@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block main %}
+{% if nav_index %}
+<header class="profile-strip panel box-shadow-wrap-normal">
+    {% if logo_url %}
+    <span class="thumb-lg avatar profile-avatar"><img src="{{ logo_url }}" alt="{{ site_title }}"></span>
+    {% endif %}
+    <div class="profile-meta">
+        <h1 class="profile-title">{{ site_title }}</h1>
+        {% if site_description %}<p class="profile-desc text-muted">{{ site_description }}</p>{% endif %}
+    </div>
+</header>
+{% endif %}
 <div class="blog-post post-list" id="post-panel">
     {% if show_archive_title %}
     <header class="archive-header"><h1 class="archive-title">{{ heading }}</h1></header>
