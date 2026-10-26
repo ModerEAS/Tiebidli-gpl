@@ -132,11 +132,11 @@ a:hover { text-decoration: underline; }
   text-align: center; color: var(--ink-soft);
 }
 .nav-icon svg { width: 1.1em; height: 1.1em; vertical-align: -0.15em; }
-#aside .nav > li > a.auto .pull-right { float: right; line-height: 40px; }
+#aside .nav > li > a.auto .pull-right { float: right; line-height: 40px; display: inline-block; }
 /* 分区垫片（现网 padder li，组间留白） */
 #aside .nav > li.padder { height: 10px; }
 /* 折叠箭头：纯 CSS 三角，收起向右、展开向下（替 fontello） */
-.chevron { width: 7px; height: 7px; flex: none; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s ease; }
+.chevron { display: inline-block; vertical-align: middle; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s ease; }
 li.active > a.auto .chevron { transform: rotate(45deg); }
 /* 子菜单：仅展开组显示，缩进一级 */
 #aside.app-aside .nav-sub.dk { display: none; flex-direction: column; gap: 2px; padding: 2px 0 2px 40px; }
