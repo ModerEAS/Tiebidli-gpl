@@ -14,6 +14,7 @@ pub struct Chrome<'a> {
     pub archives: &'a [(i32, u32, i64)],
     pub recent: &'a [(Comment, Post)],
     pub hot_posts: &'a [Post],
+    pub random_posts: &'a [Post],
     pub friend_links: &'a [crate::friend_links::FriendLink],
     pub stats: &'a crate::repo::Stats,
     pub viewer_is_editor: bool,
@@ -573,6 +574,17 @@ fn shell(
             "url": links::content_path(site, p),
             "views": p.views.max(0),
             "date": text::format_php_date(site.get_or("postDateFormat", "Y-m-d"), p.created, site.timezone()),
+            "thumb": text::first_image(&p.text, p.field_str("thumb")),
+        })
+    }).collect();
+    let random_posts: Vec<Value> = chrome.random_posts.iter().map(|p| {
+        let title = if p.has_password() { "密码保护的文章".to_string() } else { p.title.clone() };
+        json!({
+            "title": title,
+            "url": links::content_path(site, p),
+            "views": p.views.max(0),
+            "date": text::format_php_date(site.get_or("postDateFormat", "Y-m-d"), p.created, site.timezone()),
+            "thumb": text::first_image(&p.text, p.field_str("thumb")),
         })
     }).collect();
     let friend_links: Vec<Value> = chrome.friend_links.iter().map(|l| json!({
@@ -611,6 +623,8 @@ fn shell(
         "logo_url": site.theme_str("logoUrl"),
         "year": text::ymd(chrome.now, site.timezone()).0,
         "feed_url": links::feed_path(site, "/"),
+        "comments_feed_url": links::feed_path(site, "/comments/"),
+        "owner_name": owner_name(chrome),
         "feed_abs": abs(&base, &links::feed_path(site, "/")),
         "atom_url": links::feed_path(site, "/atom/"),
         "atom_abs": abs(&base, &links::feed_path(site, "/atom/")),
@@ -626,6 +640,7 @@ fn shell(
         "logout_url": if chrome.viewer_name.is_some() { public_logout(chrome) } else { String::new() },
         "sidebar": sidebar_html(chrome),
         "hot_posts": hot_posts,
+        "random_posts": random_posts,
         "friend_links": friend_links,
         "categories": categories,
         "archives_list": archives_list,
@@ -662,8 +677,48 @@ fn site_stats_json(chrome: &Chrome<'_>) -> Value {
         "posts": chrome.stats.posts,
         "comments": chrome.stats.comments,
         "days": days,
+        "days_label": days_label(days),
         "last_activity": chrome.stats.last_activity,
+        "last_activity_label": rel_time(chrome.now, chrome.stats.last_activity),
     })
+}
+
+/// 站长名：取最新文章作者（与现网 ModerRAS 一致），无文章回站点标题。
+fn owner_name(chrome: &Chrome<'_>) -> String {
+    chrome
+        .recent_posts
+        .first()
+        .map(|p| p.display_author())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| chrome.site.get_or("title", "Tiebidli").to_string())
+}
+
+/// 运行天数：满年按现网 `9 Y 156 D` 格式，否则 `N D`。
+fn days_label(days: i64) -> String {
+    if days >= 365 {
+        format!("{} Y {} D", days / 365, days % 365)
+    } else {
+        format!("{days}")
+    }
+}
+
+/// 最后活动：贴近现网 `1 Year Ago` 口径的相对时间。
+fn rel_time(now: i64, ts: i64) -> String {
+    let d = now.saturating_sub(ts);
+    if ts <= 0 {
+        return "-".into();
+    }
+    if d < 3600 {
+        format!("{} Min Ago", (d / 60).max(1))
+    } else if d < 86400 {
+        format!("{} H Ago", d / 3600)
+    } else if d < 86400 * 30 {
+        format!("{} D Ago", d / 86400)
+    } else if d < 86400 * 365 {
+        format!("{} Mon Ago", d / (86400 * 30))
+    } else {
+        format!("{} Year Ago", d / (86400 * 365))
+    }
 }
 
 fn sidebar_html(chrome: &Chrome<'_>) -> String {

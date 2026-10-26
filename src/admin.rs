@@ -3235,6 +3235,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
     }
     let recent = state.db.recent_comments(5, now).await.unwrap_or_default();
     let hot_posts: Vec<Post> = Vec::new();
+    let random_posts: Vec<Post> = Vec::new();
     let friend_links: Vec<crate::friend_links::FriendLink> = Vec::new();
     let stats = state.db.stats(now).await.unwrap_or(crate::repo::Stats {
         posts: 0,
@@ -3250,6 +3251,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         archives: &archives,
         recent: &recent,
         hot_posts: &hot_posts,
+        random_posts: &random_posts,
         friend_links: &friend_links,
         stats: &stats,
         now,

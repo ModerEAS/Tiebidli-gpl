@@ -135,7 +135,15 @@ a:hover { text-decoration: underline; }
 #rightAside .list-group-item a { color: var(--ink); }
 #rightAside .badge { float: right; background: var(--chip); border-radius: 999px; padding: 0 10px; font-size: 12px; }
 #rightAside .tablist { list-style: none; display: flex; gap: 6px; margin: 0 0 8px; padding: 0; }
-#rightAside .tablist a { padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,.08); }
+#rightAside .tablist a { display: inline-block; min-width: 44px; text-align: center; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.08); font-size: 15px; cursor: pointer; }
+#rightAside .tablist li.active a { background: rgba(255,255,255,.2); }
+#rightAside .tab-pane { display: none; }
+#rightAside .tab-pane.active { display: block; }
+#rightAside .thumb-sm img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; float: left; margin-right: 8px; }
+#rightAside .list-group-item { overflow: hidden; }
+.index-post-content { margin-top: 10px; }
+.index-post-content img { max-width: 100%; border-radius: 10px; }
+.index-post-content .more { margin: 8px 0 0; }
 #rightAside .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 #rightAside .tags .badge { float: none; background: var(--chip); border-radius: 999px; padding: 1px 10px; }
 #footer.app-footer { margin-left: 202px; margin-right: 12px; margin-bottom: 12px; padding: 14px 18px; color: var(--ink-soft); font-size: 12px; }
@@ -147,7 +155,8 @@ a:hover { text-decoration: underline; }
 #aside-user .avatar img { width: 56px; height: 56px; border-radius: 50%; }
 .aside-user-name { display: block; margin-top: 6px; font-weight: 600; }
 .aside-user-desc { font-size: 12px; margin: 2px 0 0; }
-#left_footer { display: flex; gap: 10px; padding: 10px 4px 0; font-size: 12px; }
+#left_footer { display: flex; gap: 8px; padding: 10px 4px 0; font-size: 12px; }
+#left_footer a { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); font-size: 14px; }
 #aside details summary { cursor: pointer; display: block; padding: 7px 10px; border-radius: 10px; }
 #aside details summary:hover { background: rgba(255,255,255,.09); }
 
@@ -260,7 +269,7 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
   #header_right.show .nav { flex-direction: column; align-items: stretch; }
   #header_right.show .nav a { display: block; text-align: center; }
   #aside.app-aside { display: none; top: 68px; }
-  #aside.app-aside.show { display: block; z-index: 80; }
+  #aside.app-aside.show { display: block !important; z-index: 80; }
   #rightAside { display: none; }
   .app-content, #footer.app-footer, body.read-mode .app-content, body.read-mode #footer.app-footer { margin-left: 8px; margin-right: 8px; }
   .app-content { margin-top: 64px; }

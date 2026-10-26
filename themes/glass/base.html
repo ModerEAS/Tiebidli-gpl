@@ -34,8 +34,11 @@
 <div class="app app-aside-fix container alllayout" id="app">
     <header id="header" class="app-header navbar box-shadow-bottom-lg fix-padding" role="menu">
         <div id="header_left" class="text-ellipsis navbar-header bg-dark">
-            <button class="pull-right visible-xs" data-toggle-class="show" data-target=".navbar-collapse" aria-label="菜单">
+            <button class="pull-left visible-xs" data-toggle-class="show" data-target="#aside" aria-label="菜单">
                 <span class="menu-icons">☰</span>
+            </button>
+            <button class="pull-right visible-xs" data-toggle-class="show" data-target=".navbar-collapse" aria-label="搜索">
+                <span class="menu-icons">⌕</span>
             </button>
             {% if logo_url %}
             <a class="navbar-brand" href="/"><img id="navbar-brand-day" src="{{ logo_url }}" alt="{{ site_title }}"></a>
@@ -88,19 +91,19 @@
                     <div class="dropdown wrapper vertical-wrapper">
                         <a href="/">
                             {% if logo_url %}
-                            <span class="thumb-lg avatar"><img src="{{ logo_url }}" alt="{{ site_title }}"></span>
+                            <span class="thumb-lg avatar"><img src="{{ logo_url }}" alt="{{ owner_name }}"></span>
                             {% endif %}
-                            <span class="aside-user-name">{{ site_title }}</span>
+                            <span class="aside-user-name">{{ owner_name }}</span>
                         </a>
                         {% if site_description %}<p class="aside-user-desc text-muted">{{ site_description }}</p>{% endif %}
                     </div>
                 </div>
                 <nav class="navi clearfix" role="navigation">
                     <ul class="nav new-nav-tab">
-                        <li><a href="/"><span>首页</span></a></li>
-                        {% for p in pages %}
-                        <li><a href="{{ p.url | safe }}"><span>{{ p.title }}</span></a></li>
-                        {% endfor %}
+                        <li><a href="/"><span>Home</span></a></li>
+                        <li><a href="/timeline.html"><span>时间线</span></a></li>
+                        <li><a href="/nCoV.html"><span>nCoV</span></a></li>
+                        <li><a rel="noopener" target="_blank" href="https://flash.miaostay.com"><span>小游戏</span></a></li>
                         <li>
                             <details open>
                                 <summary><span>Categories</span></summary>
@@ -141,8 +144,9 @@
             </div>
         </div>
         <div id="left_footer" class="aside-footer">
-            <a href="{{ feed_url | safe }}" aria-label="RSS">RSS</a>
-            <a href="/admin/index.php" aria-label="后台">后台</a>
+            <a href="{{ comments_feed_url | safe }}" aria-label="评论 RSS" title="评论 RSS">✉</a>
+            <a href="{{ feed_url | safe }}" aria-label="文章 RSS" title="文章 RSS">RSS</a>
+            <a href="/admin/" aria-label="管理" title="管理">⚙</a>
         </div>
     </aside>
     <div class="app-content content">
@@ -155,8 +159,9 @@
                 <div id="sidebar">
                     <section id="right_first_section" class="widget widget_tabs clear">
                         <ul class="nav nav-tabs nav-justified box-shadow-wrap-normal tablist new-nav-tab" role="tablist">
-                            <li class="active" role="presentation"><a data-target="#widget-tabs-4-hots" role="tab">热门</a></li>
-                            <li role="presentation"><a data-target="#widget-tabs-4-comments" role="tab">评论</a></li>
+                            <li class="active" role="presentation"><a data-target="#widget-tabs-4-hots" role="tab" title="热门文章">♥</a></li>
+                            <li role="presentation"><a data-target="#widget-tabs-4-comments" role="tab" title="最新评论">✉</a></li>
+                            <li role="presentation"><a data-target="#widget-tabs-4-random" role="tab" title="随机文章">⚄</a></li>
                         </ul>
                         <div class="tab-content new-nav-tab-content">
                             <div id="widget-tabs-4-hots" class="tab-pane fade in wrapper-md active" role="tabpanel">
@@ -164,6 +169,7 @@
                                 <ul class="list-group no-bg no-borders pull-in m-b-none">
                                     {% for p in hot_posts %}
                                     <li class="list-group-item">
+                                        {% if p.thumb %}<a href="{{ p.url | safe }}" class="thumb-sm"><img src="{{ p.thumb | safe }}" alt="" loading="lazy"></a>{% endif %}
                                         <a href="{{ p.url | safe }}">{{ p.title }}</a>
                                         <small class="text-muted"><span class="meta-views"><span class="sr-only">浏览次数:</span><span class="meta-value">{{ p.views }}</span></span></small>
                                     </li>
@@ -181,6 +187,17 @@
                                     {% endfor %}
                                 </ul>
                             </div>
+                            <div id="widget-tabs-4-random" class="tab-pane fade wrapper-md" role="tabpanel">
+                                <h5 class="widget-title">随机文章</h5>
+                                <ul class="list-group no-bg no-borders pull-in m-b-none">
+                                    {% for p in random_posts %}
+                                    <li class="list-group-item">
+                                        {% if p.thumb %}<a href="{{ p.url | safe }}" class="thumb-sm"><img src="{{ p.thumb | safe }}" alt="" loading="lazy"></a>{% endif %}
+                                        <a href="{{ p.url | safe }}">{{ p.title }}</a>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
                         </div>
                     </section>
                     <section id="blog_info" class="widget widget_categories wrapper-md padder-v-none clear">
@@ -188,7 +205,8 @@
                         <ul class="list-group box-shadow-wrap-normal">
                             <li class="list-group-item text-second"><span>Posts Num</span><span class="badge pull-right">{{ site_stats.posts }}</span></li>
                             <li class="list-group-item text-second"><span>Comments Num</span><span class="badge pull-right">{{ site_stats.comments }}</span></li>
-                            <li class="list-group-item text-second"><span>Operating Days</span><span class="badge pull-right">{{ site_stats.days }}</span></li>
+                            <li class="list-group-item text-second"><span>Operating Days</span><span class="badge pull-right">{{ site_stats.days_label }}</span></li>
+                            <li class="list-group-item text-second"><span>Last activity</span><span class="badge pull-right">{{ site_stats.last_activity_label }}</span></li>
                         </ul>
                     </section>
                     <section id="tag_cloud" class="widget widget_tag_cloud wrapper-md padder-v-none clear">

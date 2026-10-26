@@ -26,7 +26,7 @@
             <div class="post_title_wrapper">
                 <h2 class="m-t-xs text-ellipsis index-post-title text-title"><a href="{{ p.url | safe }}">{{ p.title }}</a></h2>
             </div>
-            <p class="summary l-h-2x text-muted">{{ p.summary }}</p>
+            <div class="entry-content l-h-2x index-post-content">{{ p.content | safe }}</div>
             <div class="text-muted post-item-foot post-item-foot-icon text-ellipsis list-inline">
                 <li><a href="{{ p.author_url | safe }}">{{ p.author }}</a></li>
                 <li><time datetime="{{ p.datetime }}">{{ p.date }}</time></li>

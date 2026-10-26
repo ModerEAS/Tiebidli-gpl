@@ -213,6 +213,7 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
         recent: state.db.recent_comments(5, now).await?,
         archives,
         hot_posts: hot_posts(state, &site, now).await,
+        random_posts: state.db.random_posts(5, now).await.unwrap_or_default(),
         friend_links: friend_links_ten(state, &site).await,
         stats: state.db.stats(now).await.unwrap_or(Stats {
             posts: 0,
@@ -265,6 +266,7 @@ struct ChromeBag {
     recent: Vec<(Comment, Post)>,
     archives: Vec<(i32, u32, i64)>,
     hot_posts: Vec<Post>,
+    random_posts: Vec<Post>,
     friend_links: Vec<crate::friend_links::FriendLink>,
     stats: Stats,
 }
@@ -1996,6 +1998,7 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
         archives: &ctx.bag.archives,
         recent: &ctx.bag.recent,
         hot_posts: &ctx.bag.hot_posts,
+        random_posts: &ctx.bag.random_posts,
         friend_links: &ctx.bag.friend_links,
         stats: &ctx.bag.stats,
         now: ctx.now,

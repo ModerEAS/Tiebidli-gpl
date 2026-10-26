@@ -40,6 +40,20 @@
       });
     });
 
+    // 右栏图标页签（现网 widget-tabs）：点图标切热门/评论/随机。
+    document.querySelectorAll('#right_first_section .tablist a[data-target]').forEach(function (tab) {
+      tab.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var section = tab.closest('section');
+        if (!section) return;
+        section.querySelectorAll('.tablist li').forEach(function (li) { li.classList.remove('active'); });
+        section.querySelectorAll('.tab-pane').forEach(function (pane) { pane.classList.remove('active'); });
+        if (tab.parentElement) tab.parentElement.classList.add('active');
+        var pane = section.querySelector(tab.getAttribute('data-target'));
+        if (pane) pane.classList.add('active');
+      });
+    });
+
     // 搜索框（Ctrl+K 打开）。
     var modal = document.getElementById('search_modal');
     var input = document.getElementById('search_input');
