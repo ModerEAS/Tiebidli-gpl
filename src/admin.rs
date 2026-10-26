@@ -3259,6 +3259,7 @@ async fn write_preview(State(state): State<Arc<AppState>>, headers: HeaderMap, b
         viewer_name: None,
         viewer_uid: 0,
         viewer_auth: "",
+        accept_language: None,
         page_url: "",
         access_ids: (None, None),
         viewer_is_editor: false,

@@ -16,6 +16,7 @@ pub struct Chrome<'a> {
     pub hot_posts: &'a [Post],
     pub random_posts: &'a [Post],
     pub friend_links: &'a [crate::friend_links::FriendLink],
+    pub accept_language: Option<&'a str>,
     pub stats: &'a crate::repo::Stats,
     pub viewer_is_editor: bool,
     pub now: i64,
@@ -633,6 +634,7 @@ fn shell(
             "slug": p.slug,
             "url": links::content_path(site, p),
         })).collect::<Vec<_>>(),
+        "nav_labels": nav_labels(chrome.accept_language),
         "nav_index": false,
         "nav_slug": "",
         "viewer_name": chrome.viewer_name,
@@ -657,6 +659,22 @@ fn shell(
         "plugin_header": crate::plugins::public_header(site),
         "plugin_footer": crate::plugins::public_footer_page(site, chrome.access_ids.0, chrome.access_ids.1),
     })
+}
+
+/// 侧栏分组文案（对齐现网 i18n 实测）：
+/// zh（zh-CN / zh-HK / zh-TW …）→ 首页/分类/页面/友链；其余 → Home/Categories/Pages/Links。
+/// 优先级：Accept-Language 主语言；无头或解析不出 → 英文（与现网 en 实测一致）。
+/// 自定义页面标题（时间线、nCoV 等）走数据源原标题，不在这里硬翻。
+pub fn nav_labels(accept_language: Option<&str>) -> Value {
+    let zh = accept_language
+        .and_then(|h| h.split(',').next())
+        .map(|tag| tag.split(';').next().unwrap_or("").trim().to_ascii_lowercase())
+        .is_some_and(|t| t == "zh" || t.starts_with("zh-"));
+    if zh {
+        json!({"lang": "zh-CN", "home": "首页", "categories": "分类", "pages": "页面", "links": "友链"})
+    } else {
+        json!({"lang": "en", "home": "Home", "categories": "Categories", "pages": "Pages", "links": "Links"})
+    }
 }
 
 fn sidebar_on(site: &Site, key: &str) -> bool {
@@ -888,5 +906,34 @@ fn format_title(heading: &str, chrome: &Chrome<'_>, page: i64) -> String {
         format!("{prefix}{site_title}")
     } else {
         format!("{prefix}{heading} - {site_title}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::nav_labels;
+
+    fn label(header: Option<&str>, key: &str) -> String {
+        nav_labels(header)[key].as_str().unwrap_or("").to_string()
+    }
+
+    #[test]
+    fn nav_labels_default_english() {
+        assert_eq!(label(None, "home"), "Home");
+        assert_eq!(label(Some(""), "categories"), "Categories");
+        assert_eq!(label(Some("en-US,en;q=0.9"), "pages"), "Pages");
+        assert_eq!(label(Some("fr-FR,fr;q=0.8"), "links"), "Links");
+    }
+
+    #[test]
+    fn nav_labels_chinese() {
+        for h in ["zh-CN,zh;q=0.9", "zh", "zh-HK", "ZH-tw;q=0.8", " zh-CN "] {
+            assert_eq!(label(Some(h), "home"), "首页", "{h}");
+            assert_eq!(label(Some(h), "categories"), "分类", "{h}");
+            assert_eq!(label(Some(h), "pages"), "页面", "{h}");
+            assert_eq!(label(Some(h), "links"), "友链", "{h}");
+        }
+        assert_eq!(nav_labels(Some("zh-CN"))["lang"], "zh-CN");
+        assert_eq!(nav_labels(None)["lang"], "en");
     }
 }

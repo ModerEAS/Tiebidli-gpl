@@ -2006,6 +2006,7 @@ fn chrome<'a>(ctx: &ReqCtx<'a>, cookies: HashMap<String, String>) -> Chrome<'a> 
         viewer_name: ctx.viewer_name,
         viewer_uid: ctx.viewer_uid,
         viewer_auth: ctx.viewer_auth,
+        accept_language: ctx.headers.get("accept-language").and_then(|v| v.to_str().ok()),
         page_url: ctx.page_url,
         access_ids: (None, None),
         viewer_is_editor: ctx.viewer_is_editor,

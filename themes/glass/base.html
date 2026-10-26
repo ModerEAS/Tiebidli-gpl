@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="{{ nav_labels.lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="renderer" content="webkit">
@@ -103,7 +103,7 @@
                         <li>
                             <a href="/" class="auto">
                                 <span class="nav-icon"><i data-feather="home"></i></span>
-                                <span>Home</span>
+                                <span>{{ nav_labels.home }}</span>
                             </a>
                         </li>
                         <li>
@@ -130,7 +130,7 @@
                             <a class="auto" href="#" data-nav-toggle>
                                 <span class="pull-right text-muted chevron" aria-hidden="true"></span>
                                 <span class="nav-icon"><i data-feather="grid"></i></span>
-                                <span>Categories</span>
+                                <span>{{ nav_labels.categories }}</span>
                             </a>
                             <ul class="nav nav-sub dk">
                                 {% for c in categories %}
@@ -142,7 +142,7 @@
                             <a class="auto" href="#" data-nav-toggle>
                                 <span class="pull-right text-muted chevron" aria-hidden="true"></span>
                                 <span class="nav-icon"><i data-feather="file"></i></span>
-                                <span>Pages</span>
+                                <span>{{ nav_labels.pages }}</span>
                             </a>
                             <ul class="nav nav-sub dk">
                                 {% for p in pages %}
@@ -154,7 +154,7 @@
                             <a class="auto" href="#" data-nav-toggle>
                                 <span class="pull-right text-muted chevron" aria-hidden="true"></span>
                                 <span class="nav-icon"><i data-feather="user"></i></span>
-                                <span>Links</span>
+                                <span>{{ nav_labels.links }}</span>
                             </a>
                             <ul class="nav nav-sub dk">
                                 <!--使用links插件，输出全站友链-->
