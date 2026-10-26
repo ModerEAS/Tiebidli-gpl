@@ -38,8 +38,7 @@ a:hover { text-decoration: underline; }
 .single-post.panel,
 #search_modal,
 #tocTree,
-#footer.app-footer,
-#glass_global_player .aplayer {
+#footer.app-footer {
   position: relative;
   isolation: isolate;
   border: 1px solid transparent;
@@ -198,8 +197,6 @@ a:hover { text-decoration: underline; }
 #tocTree { position: fixed; right: 14px; top: 130px; width: 210px; max-height: 60vh; overflow: auto; padding: 10px 12px; font-size: 12px; }
 #tocTree:empty { display: none; }
 #tocTree ul { list-style: none; margin: 0; padding-left: 12px; }
-#glass_global_player { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 60; }
-#glass_global_player .aplayer { margin: 0; overflow: hidden; }
 
 /* ---- 浅色模式（切换用）：干净浅底白卡 ---- */
 body.light {

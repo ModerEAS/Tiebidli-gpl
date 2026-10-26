@@ -1099,11 +1099,6 @@ async fn action_dispatch(
     if action == "ajax" {
         return ajax_action(&state, &q, &headers, &body).await;
     }
-    // 主题公开 Action（自带门禁，不走后台 `_` 校验）：音乐解析、时光机编辑。
-    // `handsome-meting-api` 为旧路径兼容，行为与 `meting-api` 一致。
-    if action == "meting-api" || action == "handsome-meting-api" {
-        return crate::http::meting_route(&state, &q, &headers).await;
-    }
     if action == "cross-edit" {
         return crate::http::cross_edit_route(&state, &method, &q, &body, &headers).await;
     }

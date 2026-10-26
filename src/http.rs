@@ -159,9 +159,6 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     if path == "/access/log/delete.json" {
         return access_delete_json(state, &site, &cookies, &bytes).await;
     }
-    if path == "/action/meting-api" || path == "/action/handsome-meting-api" {
-        return meting_action(state, &site, &query, &cookies).await;
-    }
     if path == "/action/cross-edit" {
         return cross_edit_action(state, &site, &parts.method, &query, &form, &parts.headers, &cookies).await;
     }
@@ -1204,16 +1201,6 @@ async fn star_action(
     Some(resp)
 }
 
-/// 给 `admin::action_dispatch` 用的主题音乐入口（公开路由，自带参数校验）。
-pub(crate) async fn meting_route(state: &AppState, query: &HashMap<String, String>, headers: &HeaderMap) -> Response {
-    let now = chrono::Utc::now().timestamp();
-    let Ok(site) = state.db.load_site(now).await else {
-        return plain(StatusCode::INTERNAL_SERVER_ERROR, "读取设置失败");
-    };
-    let cookies = cookies_from(headers);
-    meting_action(state, &site, query, &cookies).await.unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))
-}
-
 /// 给 `admin::action_dispatch` 用的时光机编辑入口（自带登录 + contributor + `_` 校验）。
 pub(crate) async fn cross_edit_route(
     state: &AppState,
@@ -1231,62 +1218,6 @@ pub(crate) async fn cross_edit_route(
     cross_edit_action(state, &site, method, query, &form, headers, &cookies)
         .await
         .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))
-}
-
-/// 主题音乐 Action（路径与现网 LocalConst `MUSIC_API` 一致）。
-/// 参数校验对齐 `MetingAction::check`；目前只实现 `netease` 源。
-async fn meting_action(
-    state: &AppState,
-    site: &crate::model::Site,
-    query: &HashMap<String, String>,
-    cookies: &HashMap<String, String>,
-) -> anyhow::Result<Response> {
-    let _ = state;
-    if query.get("do").map(String::as_str) == Some("parse") {
-        // 对齐 `MetingAction::action`：`do=parse` 需登录。
-        let root = auth::site_root(&state.cfg.site_url, &links::site_base(&state.cfg.site_url, site));
-        let logged = auth::session_user(&state.db, &root, cookies).await.ok().flatten().is_some();
-        if !logged {
-            return Ok(plain(StatusCode::FORBIDDEN, "forbidden"));
-        }
-        let data = query.get("data").map(String::as_str).unwrap_or("");
-        let (server, id, kind) = crate::meting::parse_music_url(data);
-        if server.is_empty() {
-            return Ok(plain(
-                StatusCode::OK,
-                format!("[hplayer]\n[Music title=\"歌曲名\" author=\"歌手\" url=\"{data}\" pic=\"图片文件URL\" lrc=\"歌词文件URL\"/]\n[/hplayer]\n").as_str(),
-            ));
-        }
-        return Ok(plain(
-            StatusCode::OK,
-            format!("[hplayer]\n[Music server=\"{server}\" id=\"{id}\" type=\"{kind}\"/]\n[/hplayer]\n").as_str(),
-        ));
-    }
-    let server = query.get("server").map(String::as_str).unwrap_or("");
-    let kind = query.get("type").map(String::as_str).unwrap_or("");
-    let id = query.get("id").map(String::as_str).unwrap_or("");
-    if !crate::meting::check(server, kind, id) || server != "netease" {
-        return Ok(plain(StatusCode::FORBIDDEN, ""));
-    }
-    let body = match kind {
-        "song" => crate::meting::api_song(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
-        "playlist" => crate::meting::api_playlist(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
-        "artist" => crate::meting::api_artist(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
-        "album" => crate::meting::api_album(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
-        "search" => crate::meting::api_search(id).await.map(|t| serde_json::to_string(&t).unwrap_or_default()),
-        "url" => crate::meting::api_url(id).await.map(|v| v.to_string()),
-        "lrc" => crate::meting::api_lrc(id).await.map(|v| v.to_string()),
-        "pic" => crate::meting::api_pic(id).await.map(|v| v.to_string()),
-        _ => None,
-    };
-    match body {
-        Some(json) => Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
-            .body(Body::from(json))
-            .unwrap_or_else(|_| plain(StatusCode::INTERNAL_SERVER_ERROR, "页面生成失败"))),
-        None => Ok(plain(StatusCode::BAD_GATEWAY, "music api error")),
-    }
 }
 
 /// 时光机评论编辑/删除（对齐主题 `CrossAction` 的登录 + contributor 门禁与 `_` 校验）。

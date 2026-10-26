@@ -775,9 +775,6 @@ async fn theme_parity_layout_and_actions() {
         "post-calendar",
         "category-radar",
         "widget-tabs-4-hots",
-        "glass_global_player",
-        "MUSIC_API",
-        "action/meting-api",
         "使用links插件",
         "bobo",
         "app-header",
@@ -849,18 +846,6 @@ async fn theme_parity_layout_and_actions() {
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body.trim(), "-1");
-
-    // 音乐 Action：非法源/缺参 403；parse 未登录 403。
-    for uri in [
-        "/action/meting-api?server=spotify&type=song&id=1",
-        "/action/meting-api?server=netease&type=song&id=",
-        "/action/meting-api?do=parse&data=https://music.163.com/playlist?id=1",
-        // 旧路径兼容：与新路径同行为。
-        "/action/handsome-meting-api?server=spotify&type=song&id=1",
-    ] {
-        let (status, _, _, _) = call(&app, Request::builder().uri(uri).body(Body::empty()).unwrap()).await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");
-    }
 
     // 时光机编辑：匿名 100。
     let (status, body, _, _) = call(

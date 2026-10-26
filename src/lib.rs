@@ -10,7 +10,6 @@ pub mod feed;
 pub mod http;
 pub mod friend_links;
 pub mod links;
-pub mod meting;
 pub mod model;
 pub mod stars;
 pub mod phpval;

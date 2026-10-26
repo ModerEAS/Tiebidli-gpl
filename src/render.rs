@@ -560,7 +560,6 @@ fn shell(
 ) -> Value {
     let site = chrome.site;
     let base = links::site_base(&chrome.cfg.site_url, site);
-    let meting_base = format!("{base}/action/meting-api");
     let desc = if description.is_empty() {
         site.get("description").to_string()
     } else {
@@ -636,13 +635,9 @@ fn shell(
             "name": t.name, "url": links::tag_path(site, t), "count": t.count,
         })).collect::<Vec<_>>(),
         "site_stats": site_stats_json(chrome),
-        "meting_api": format!("{meting_base}?server=:server&type=:type&id=:id&auth=:auth&r=:r"),
-        "meting_api_parse": format!("{meting_base}?do=parse"),
         "calendar_json": serde_json::to_string(&archives_list).unwrap_or_else(|_| "[]".into()),
         "cats_json": serde_json::to_string(&categories).unwrap_or_else(|_| "[]".into()),
         "base_json": serde_json::to_string(&base).unwrap_or_else(|_| "\"\"".into()),
-        "meting_api_json": serde_json::to_string(&format!("{meting_base}?server=:server&type=:type&id=:id&auth=:auth&r=:r")).unwrap_or_default(),
-        "meting_api_parse_json": serde_json::to_string(&format!("{meting_base}?do=parse")).unwrap_or_default(),
         "show_archive_title": false,
         "plugin_header": crate::plugins::public_header(site),
         "plugin_footer": crate::plugins::public_footer_page(site, chrome.access_ids.0, chrome.access_ids.1),

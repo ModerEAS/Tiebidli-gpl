@@ -1,5 +1,5 @@
 /* 前台胶水（自写）：暗色开关、目录、朗读、阅读模式、字号、点赞、PJAX、播放器、日历/雷达占位。
-   依赖均为公开 CDN（jQuery/pjax/highlight/aplayer），加载失败时逐个降级，页面仍可用。 */
+   依赖均为公开 CDN（jQuery/pjax/highlight），加载失败时逐个降级，页面仍可用。 */
 (function () {
   'use strict';
   var TB = window.TB || {};
@@ -289,18 +289,5 @@
     }
     fill('post-calendar', TB.CALENDAR, function (it) { return it.year + '-' + it.month; });
     fill('category-radar', TB.CATS, function (it) { return it.name + ' (' + it.count + ')'; });
-
-    // 音乐：`window.TB_MUSIC = {server, type, id}` 配好后才初始化 APlayer。
-    var music = window.TB_MUSIC;
-    var player = document.getElementById('glass_global_player');
-    if (music && music.id && player && window.APlayer && TB.MUSIC_API) {
-      var api = TB.MUSIC_API.split('?')[0] + '?server=' + encodeURIComponent(music.server || 'netease') +
-        '&type=' + encodeURIComponent(music.type || 'playlist') + '&id=' + encodeURIComponent(music.id);
-      fetch(api, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (list) {
-        if (!list || !list.length) return;
-        player.classList.remove('hide');
-        new window.APlayer({ container: player, audio: list });
-      }).catch(function () {});
-    }
   });
 })();

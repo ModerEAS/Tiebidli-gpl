@@ -203,7 +203,6 @@
             </aside>
         </div>
     </div>
-    <div id="glass_global_player" class="hide"></div>
     <footer id="footer" class="app-footer" role="footer">
         <div class="padder-sm bg-white footer_wrapper box-shadow-wrap-normal b-normal">
             <div class="pull-right hidden-xs text-ellipsis"></div>
@@ -217,9 +216,6 @@
 window.TB = {
     BLOG_URL: {{ base_json | safe }},
     IS_PJAX: '1',
-    MUSIC_API: {{ meting_api_json | safe }},
-    MUSIC_API_PARSE: {{ meting_api_parse_json | safe }},
-    MUSIC_LIST: [],
     THEME_DARK_MODE: 'light',
     CALENDAR: {{ calendar_json | safe }},
     CATS: {{ cats_json | safe }},
@@ -235,7 +231,6 @@ window.TB = {
 {% if has_math | default(false) %}
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.min.js"></script>
 {% endif %}
-<script src="https://cdn.jsdelivr.net/npm/aplayer@1.10.1/dist/APlayer.min.js"></script>
 {% if theme_ready %}
 <script src="{{ static | safe }}/js/site.js"></script>
 {% endif %}
