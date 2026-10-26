@@ -15,7 +15,7 @@ async fn boot() -> (axum::Router, Db) {
 }
 
 async fn boot_theme() -> (axum::Router, Db) {
-    boot_inner(Some(std::path::PathBuf::from("themes/handsome"))).await
+    boot_inner(Some(std::path::PathBuf::from("themes/glass"))).await
 }
 
 async fn boot_inner(template_dir: Option<std::path::PathBuf>) -> (axum::Router, Db) {
@@ -754,7 +754,7 @@ async fn access_feed_entrypoint_ua_parity() {
 
 #[tokio::test]
 async fn theme_parity_layout_and_actions() {
-    // 新主题骨架：THEME_DIR 指向 themes/handsome，断言现网对齐的 class/节点。
+    // 新主题骨架：THEME_DIR 指向 themes/glass，断言现网对齐的 class/节点。
     let (app, db) = boot_theme().await;
     let cookie = login(&app).await;
     activate(&app, &db, &cookie, "Access").await;
@@ -775,9 +775,9 @@ async fn theme_parity_layout_and_actions() {
         "post-calendar",
         "category-radar",
         "widget-tabs-4-hots",
-        "handsome_global_player",
+        "glass_global_player",
         "MUSIC_API",
-        "action/handsome-meting-api",
+        "action/meting-api",
         "使用links插件",
         "bobo",
         "app-header",
@@ -852,9 +852,11 @@ async fn theme_parity_layout_and_actions() {
 
     // 音乐 Action：非法源/缺参 403；parse 未登录 403。
     for uri in [
+        "/action/meting-api?server=spotify&type=song&id=1",
+        "/action/meting-api?server=netease&type=song&id=",
+        "/action/meting-api?do=parse&data=https://music.163.com/playlist?id=1",
+        // 旧路径兼容：与新路径同行为。
         "/action/handsome-meting-api?server=spotify&type=song&id=1",
-        "/action/handsome-meting-api?server=netease&type=song&id=",
-        "/action/handsome-meting-api?do=parse&data=https://music.163.com/playlist?id=1",
     ] {
         let (status, _, _, _) = call(&app, Request::builder().uri(uri).body(Body::empty()).unwrap()).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");

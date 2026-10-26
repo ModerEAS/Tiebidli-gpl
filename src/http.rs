@@ -159,7 +159,7 @@ async fn dispatch_inner(state: &AppState, req: Request<Body>) -> anyhow::Result<
     if path == "/access/log/delete.json" {
         return access_delete_json(state, &site, &cookies, &bytes).await;
     }
-    if path == "/action/handsome-meting-api" {
+    if path == "/action/meting-api" || path == "/action/handsome-meting-api" {
         return meting_action(state, &site, &query, &cookies).await;
     }
     if path == "/action/cross-edit" {

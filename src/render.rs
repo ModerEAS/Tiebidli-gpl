@@ -560,7 +560,7 @@ fn shell(
 ) -> Value {
     let site = chrome.site;
     let base = links::site_base(&chrome.cfg.site_url, site);
-    let meting_base = format!("{base}/action/handsome-meting-api");
+    let meting_base = format!("{base}/action/meting-api");
     let desc = if description.is_empty() {
         site.get("description").to_string()
     } else {

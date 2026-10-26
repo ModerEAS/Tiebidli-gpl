@@ -5,14 +5,13 @@
 
 ## 启用
 
-- 模板：`THEME_DIR=<repo>/themes/handsome`（5 个 `.html` 在启动时覆盖内置同名模板）。
-- 静态：`THEME_STATIC_DIR=<repo>/themes/handsome`，
-  `/usr/themes/handsome/assets/...` 即 `assets/...`（目录名与现网 `options.theme` 一致，
-  对齐静态路径；后台「外观」页会列出该目录）。
-- 后台把 `options.theme` 设为 `handsome`（或保持默认，外观只影响静态前缀）。
+- 模板：`THEME_DIR=<repo>/themes/glass`（5 个 `.html` 在启动时覆盖内置同名模板）。
+- 静态：`THEME_STATIC_DIR=<repo>/themes/glass`，
+  `/usr/themes/glass/assets/...` 即 `assets/...`。
+- 后台把 `options.theme` 设为 `glass`（或保持默认，外观只影响静态前缀）。
 
 ## 预览
-- `LISTEN=127.0.0.1:8091 THEME_DIR=<repo>/themes/handsome THEME_STATIC_DIR=<repo>/themes/handsome DATABASE_URL=sqlite:///tmp/tiebidli-glass.db` 启动后浏览器开 `http://127.0.0.1:8091/`。
+- `LISTEN=127.0.0.1:8091 THEME_DIR=<repo>/themes/glass THEME_STATIC_DIR=<repo>/themes/glass DATABASE_URL=sqlite:///tmp/tiebidli-glass.db` 启动后浏览器开 `http://127.0.0.1:8091/`。
 - 默认即现网式深色玻璃（青色低多边形壁纸为自生成底图）；右上角按钮可在深/浅色间切换；无 `backdrop-filter` 自动实色回退。
 
 ## 预览（液态玻璃演示样式）
@@ -34,8 +33,8 @@
 - 点赞：`GET/POST /?action=star_post&cid=`、`star_talk&coid=`，纯文本 `1/2/-1`
  （cookie `extend_post_stars` / `extend_say_stars` 去重，计数列 `contents.stars` /
   `comments.stars` 缺列 best-effort 补）。
-- 音乐：`GET /action/handsome-meting-api`（与现网 LocalConst `MUSIC_API` 同路径，
-  主题 Action 非引擎能力）；参数校验对齐参考实现；目前只实现 `netease` 源
+- 音乐：`GET /action/meting-api`（自写精简实现；网易源）；旧 `/action/handsome-meting-api`
+  仅作静默兼容保留，同 handler。参数校验对齐参考实现；目前只实现 `netease` 源
  （song/playlist/artist/album/search/url/lrc/pic），其它源回 403。
   `?do=parse` 需登录，返回 `[hplayer]` 短代码文本（与参考同形）。
   前端默认不配歌单（`window.TB_MUSIC` 未设置时播放器隐藏），配好即播。
@@ -48,7 +47,7 @@
 
 ## 落地（模板侧骨架）
 
-`themes/handsome/`：`base/list/single/search/404.html` + `assets/css/style.css`（占位，
+`themes/glass/`：`base/list/single/search/404.html` + `assets/css/style.css`（占位，
 只保布局：顶栏固定、侧栏左置、主列避让、暗色/阅读模式类）+ `assets/js/site.js`（自写胶水）。
 对齐的 class/节点：`app-header/navbar/header_left/header_right`、`app-aside/navi`、
 `app-content/app-content-body`（PJAX 容器 `#content`）、`app-footer`、`search_modal`、
@@ -56,11 +55,11 @@
 `post_title_wrapper/index-post-title`、`summary`、`post-item-foot`、`meta-views/meta-value`、
 `entry-content`、`tocTree`、`support-author/like_button/like_label`、`star_post`、
 `star_talk/star_count/say_footer/panel-footer`、`post-calendar/category-radar`、
-`widget-tabs-4-hots`、`handsome_global_player`、`respond-*` 评论表单。
+`widget-tabs-4-hots`、`glass_global_player`、`respond-*` 评论表单。
 
 ## 刻意跳过
 
-- 主题作者 CSS（`handsome.min.css` 等）与闭源 `core.min.js` / `function.min.js`：
+- 商业主题原版 CSS/JS（压缩包与闭源脚本）：
   **未提交任何原文件**，样式/胶水全部自写。
 - 追番/bilifan/douban、空 GitHub 日历、坏 SW、后台 MultiUpload、未引用的 EditorMD/Mailer。
 - `[secret]` 短代码（README 刻意不做；时光机正文原样输出）。

@@ -1,4 +1,4 @@
-//! 主题音乐 Action：`GET /action/handsome-meting-api`。
+//! 主题音乐 Action：`GET /action/meting-api`。
 //!
 //! 路径字面量与现网 LocalConst `MUSIC_API` / `MUSIC_API_PARSE` 一致（主题 Action，非引擎能力）。
 //! 参数校验对齐参考 `MetingAction::check`；`do=parse` 的 URL 识别规则同 `shortcode()`。

@@ -292,7 +292,7 @@
 
     // 音乐：`window.TB_MUSIC = {server, type, id}` 配好后才初始化 APlayer。
     var music = window.TB_MUSIC;
-    var player = document.getElementById('handsome_global_player');
+    var player = document.getElementById('glass_global_player');
     if (music && music.id && player && window.APlayer && TB.MUSIC_API) {
       var api = TB.MUSIC_API.split('?')[0] + '?server=' + encodeURIComponent(music.server || 'netease') +
         '&type=' + encodeURIComponent(music.type || 'playlist') + '&id=' + encodeURIComponent(music.id);
