@@ -99,43 +99,70 @@
                     </div>
                 </div>
                 <nav class="navi clearfix" role="navigation">
-                    <ul class="nav new-nav-tab">
-                        <li><a href="/"><span>Home</span></a></li>
-                        <li><a href="/timeline.html"><span>时间线</span></a></li>
-                        <li><a href="/nCoV.html"><span>nCoV</span></a></li>
-                        <li><a rel="noopener" target="_blank" href="https://flash.miaostay.com"><span>小游戏</span></a></li>
+                    <ul class="nav">
                         <li>
-                            <details open>
-                                <summary><span>Categories</span></summary>
-                                <ul class="nav nav-sub dk">
-                                    {% for c in categories %}
-                                    <li><a href="{{ c.url | safe }}">{{ c.name }} ({{ c.count }})</a></li>
-                                    {% endfor %}
-                                </ul>
-                            </details>
+                            <a href="/" class="auto">
+                                <span class="nav-icon"><i data-feather="home"></i></span>
+                                <span>Home</span>
+                            </a>
                         </li>
                         <li>
-                            <details>
-                                <summary><span>Pages</span></summary>
-                                <ul class="nav nav-sub dk">
-                                    {% for p in pages %}
-                                    <li><a href="{{ p.url | safe }}">{{ p.title }}</a></li>
-                                    {% endfor %}
-                                </ul>
-                            </details>
+                            <a href="/timeline.html" class="auto">
+                                <span class="nav-icon"><i data-feather="clock"></i></span>
+                                <span>时间线</span>
+                            </a>
                         </li>
                         <li>
-                            <details>
-                                <summary><span>Links</span></summary>
-                                <ul class="nav nav-sub dk">
-                                    <!--使用links插件，输出全站友链-->
-                                    {% for l in friend_links %}
-                                    <li><a rel="noopener" target="_blank" href="{{ l.url | safe }}">{{ l.name }}</a></li>
-                                    {% endfor %}
-                                </ul>
-                            </details>
+                            <a href="/nCoV.html" class="auto">
+                                <span class="nav-icon"><i data-feather="alert-triangle"></i></span>
+                                <span>nCoV</span>
+                            </a>
                         </li>
-                    </ul>
+                        <li>
+                            <a rel="noopener" target="_blank" href="https://flash.miaostay.com" class="auto">
+                                <span class="nav-icon"><i data-feather="zap"></i></span>
+                                <span>小游戏</span>
+                            </a>
+                        </li>
+                        <li class="line dk"></li>
+                        <li class="active">
+                            <a class="auto" href="#" data-nav-toggle>
+                                <span class="pull-right text-muted chevron" aria-hidden="true"></span>
+                                <span class="nav-icon"><i data-feather="grid"></i></span>
+                                <span>Categories</span>
+                            </a>
+                            <ul class="nav nav-sub dk">
+                                {% for c in categories %}
+                                <li><a href="{{ c.url | safe }}"><b class="badge pull-right">{{ c.count }}</b>{{ c.name }}</a></li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                        <li>
+                            <a class="auto" href="#" data-nav-toggle>
+                                <span class="pull-right text-muted chevron" aria-hidden="true"></span>
+                                <span class="nav-icon"><i data-feather="file"></i></span>
+                                <span>Pages</span>
+                            </a>
+                            <ul class="nav nav-sub dk">
+                                {% for p in pages %}
+                                <li><a href="{{ p.url | safe }}"><span>{{ p.title }}</span></a></li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                        <li>
+                            <a class="auto" href="#" data-nav-toggle>
+                                <span class="pull-right text-muted chevron" aria-hidden="true"></span>
+                                <span class="nav-icon"><i data-feather="user"></i></span>
+                                <span>Links</span>
+                            </a>
+                            <ul class="nav nav-sub dk">
+                                <!--使用links插件，输出全站友链-->
+                                {% for l in friend_links %}
+                                <li data-original-title="{{ l.description }}" data-toggle="tooltip" data-placement="top"><a rel="noopener" target="_blank" href="{{ l.url | safe }}"><span>{{ l.name }}</span></a></li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                    </ul>>
                     <div class="tab-content new-nav-tab-content">
                         <div id="post-calendar" class="top-echart hide"></div>
                         <div id="category-radar" class="top-echart hide"></div>
@@ -144,9 +171,9 @@
             </div>
         </div>
         <div id="left_footer" class="aside-footer">
-            <a href="{{ comments_feed_url | safe }}" aria-label="评论 RSS" title="评论 RSS">✉</a>
-            <a href="{{ feed_url | safe }}" aria-label="文章 RSS" title="文章 RSS">RSS</a>
-            <a href="/admin/" aria-label="管理" title="管理">⚙</a>
+            <a href="{{ comments_feed_url | safe }}" target="_blank" aria-label="评论 RSS" title="评论 RSS"><span class="left-bottom-icons"><i data-feather="message-square"></i></span></a>
+            <a href="{{ feed_url | safe }}" target="_blank" aria-label="文章 RSS" title="文章 RSS"><span class="left-bottom-icons"><i data-feather="rss"></i></span></a>
+            <a href="/admin/" target="_blank" aria-label="管理" title="管理"><span class="left-bottom-icons"><i data-feather="settings"></i></span></a>
         </div>
     </aside>
     <div class="app-content content">
@@ -249,6 +276,7 @@ window.TB = {
 {% if has_math | default(false) %}
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.min.js"></script>
 {% endif %}
+<script src="https://cdn.jsdelivr.net/npm/feather-icons@4/dist/feather.min.js"></script>
 {% if theme_ready %}
 <script src="{{ static | safe }}/js/site.js"></script>
 {% endif %}

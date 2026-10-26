@@ -29,6 +29,16 @@
       paintToggle();
     });
 
+    // 侧栏折叠组（对齐现网）：点标题切换展开/收起；feather 线框图标（CDN 失败静默跳过，文字仍在）。
+    document.querySelectorAll('#aside [data-nav-toggle]').forEach(function (t) {
+      t.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var li = t.closest('li');
+        if (li) li.classList.toggle('active');
+      });
+    });
+    try { if (window.feather) window.feather.replace(); } catch (e) {}
+
     // 移动端导航 + 通用 toggle。
     document.querySelectorAll('[data-toggle-class]').forEach(function (btn) {
       btn.addEventListener('click', function () {

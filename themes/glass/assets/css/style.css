@@ -120,9 +120,26 @@ a:hover { text-decoration: underline; }
   overflow-y: auto; padding: 16px 12px; font-size: 13px;
 }
 #aside.app-aside .nav { flex-direction: column; gap: 2px; }
-#aside.app-aside .nav > li > a,
-#aside.app-aside .nav > li > span { display: block; padding: 7px 10px; border-radius: 10px; }
-#aside.app-aside .nav > li > a:hover { background: rgba(255,255,255,.09); }
+/* 顶层链接：图标+文字横排（对齐现网 a.auto 结构） */
+#aside.app-aside .nav > li > a.auto {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 10px; cursor: pointer;
+}
+#aside.app-aside .nav > li > a.auto:hover { background: rgba(255,255,255,.09); }
+.nav-icon { display: inline-flex; flex: none; color: var(--ink-soft); }
+.nav-icon svg { width: 1.1em; height: 1.1em; }
+#aside .nav > li > a.auto .pull-right { margin-left: auto; }
+/* 折叠箭头：纯 CSS 三角，收起向右、展开向下（替 fontello） */
+.chevron { width: 7px; height: 7px; flex: none; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s ease; }
+li.active > a.auto .chevron { transform: rotate(45deg); }
+/* 子菜单：仅展开组显示，缩进一级 */
+#aside.app-aside .nav-sub.dk { display: none; flex-direction: column; gap: 2px; padding: 2px 0 2px 30px; }
+#aside.app-aside li.active > .nav-sub.dk { display: flex; }
+#aside.app-aside .nav-sub a { display: block; padding: 6px 10px; border-radius: 8px; }
+#aside.app-aside .nav-sub a:hover { background: rgba(255,255,255,.09); }
+#aside .badge.pull-right { float: right; background: var(--chip); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+/* 分组线（现网 li.line.dk） */
+#aside .line.dk { height: 1px; margin: 8px 4px; background: rgba(255,255,255,.14); }
 /* 文档流撑满视口：内容 flex 占位，页脚跟在末尾，短内容时沉底不悬空 */
 #app.alllayout { display: flex; flex-direction: column; min-height: 100vh; }
 .app-content { flex: 1; margin: 76px 12px 0 202px; padding: 4px 4px 24px; }
@@ -160,8 +177,9 @@ a:hover { text-decoration: underline; }
 .aside-user-desc { font-size: 12px; margin: 2px 0 0; }
 #left_footer { display: flex; gap: 8px; padding: 10px 4px 0; font-size: 12px; }
 #left_footer a { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); font-size: 14px; }
-#aside details summary { cursor: pointer; display: block; padding: 7px 10px; border-radius: 10px; }
-#aside details summary:hover { background: rgba(255,255,255,.09); }
+#left_footer a { display: flex; align-items: center; justify-content: center; }
+#left_footer .left-bottom-icons { display: inline-flex; }
+#left_footer .left-bottom-icons svg { width: 18px; height: 18px; }
 
 /* 卡片：深色半透明，大圆角；标题粗白，摘要次之，meta 更淡 */
 .single-post.panel { padding: 20px 22px; margin-bottom: 16px; border-radius: 14px; }
