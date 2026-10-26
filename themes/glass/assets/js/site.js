@@ -298,20 +298,34 @@
     })();
 
     // 日历/雷达占位：有数据则列出入口，无 ECharts 依赖。
+    // 行式与主 Categories 组一致：名称 + 右侧独立 badge 块，不用浏览器默认圆点/文案计数。
     function fill(id, items, fmt) {
       var el = document.getElementById(id);
       if (!el || !items || !items.length) return;
       el.classList.remove('hide');
       var ul = document.createElement('ul');
+      ul.className = 'nav nav-sub dk';
       items.slice(0, 24).forEach(function (it) {
+        var f = fmt(it);
         var li = document.createElement('li');
         var a = document.createElement('a');
-        a.href = it.url; a.textContent = fmt(it);
+        a.href = it.url;
+        if (f && typeof f === 'object') {
+          if (f.badge != null) {
+            var b = document.createElement('b');
+            b.className = 'badge pull-right';
+            b.textContent = f.badge;
+            a.appendChild(b);
+          }
+          a.appendChild(document.createTextNode(f.label));
+        } else {
+          a.textContent = f;
+        }
         li.appendChild(a); ul.appendChild(li);
       });
       el.appendChild(ul);
     }
     fill('post-calendar', TB.CALENDAR, function (it) { return it.year + '-' + it.month; });
-    fill('category-radar', TB.CATS, function (it) { return it.name + ' (' + it.count + ')'; });
+    fill('category-radar', TB.CATS, function (it) { return { label: it.name, badge: it.count }; });
   });
 })();

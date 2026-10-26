@@ -144,6 +144,9 @@ li.active > a.auto .chevron { transform: rotate(45deg); }
 #aside.app-aside .nav-sub a { display: block; padding: 6px 10px; border-radius: 8px; }
 #aside.app-aside .nav-sub a:hover { background: rgba(255,255,255,.09); }
 #aside .badge.pull-right { float: right; background: var(--chip); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+/* 日历/雷达占位列表：与分组子菜单同式（名称 + 右侧 badge），常显 */
+#aside .top-echart { margin-top: 6px; }
+#aside .top-echart .nav-sub.dk { display: flex; }
 /* 分组线（现网 li.line.dk） */
 #aside .line.dk { height: 1px; margin: 8px 4px; background: rgba(255,255,255,.14); }
 /* 文档流撑满视口：内容 flex 占位，页脚跟在末尾，短内容时沉底不悬空 */
