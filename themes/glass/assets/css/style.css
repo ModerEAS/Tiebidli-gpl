@@ -86,10 +86,11 @@ a:hover { text-decoration: underline; }
   to { background-position: 100% 100%; }
 }
 
-/* 顶栏全宽，品牌角在左 */
-#header.app-header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; border-radius: 0 0 14px 14px; }
+/* 顶栏：全宽单行，z 最高；侧栏/内容让开顶栏高度，不重叠 */
+#header.app-header { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; align-items: center; height: 64px; border-radius: 0 0 14px 14px; }
 #header a { color: var(--ink); }
 #header_left, #header_right { display: flex; align-items: center; gap: 12px; padding: 6px 18px; min-height: 52px; position: relative; }
+#header_left { flex: none; }
 .navbar-brand { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 #header_right .nav a { font-size: 13px; letter-spacing: -0.01em; }
 #aside.app-aside { letter-spacing: -0.01em; }
@@ -113,16 +114,18 @@ a:hover { text-decoration: underline; }
 .nav { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .nav-sub { display: flex; gap: 8px; }
 
-/* 侧栏：顶栏下方窄列，图标+短标签 */
+/* 侧栏：顶栏下方窄列，z 低于顶栏，绝不盖顶栏 */
 #aside.app-aside {
-  position: fixed; top: 76px; left: 12px; bottom: 12px; width: 190px;
+  position: fixed; top: 76px; left: 12px; bottom: 12px; width: 190px; z-index: 40;
   overflow-y: auto; padding: 16px 12px; font-size: 13px;
 }
 #aside.app-aside .nav { flex-direction: column; gap: 2px; }
 #aside.app-aside .nav > li > a,
 #aside.app-aside .nav > li > span { display: block; padding: 7px 10px; border-radius: 10px; }
 #aside.app-aside .nav > li > a:hover { background: rgba(255,255,255,.09); }
-.app-content { margin: 64px 12px 0 202px; padding: 4px 4px 24px; }
+/* 文档流撑满视口：内容 flex 占位，页脚跟在末尾，短内容时沉底不悬空 */
+#app.alllayout { display: flex; flex-direction: column; min-height: 100vh; }
+.app-content { flex: 1; margin: 76px 12px 0 202px; padding: 4px 4px 24px; }
 .app-content .hbox { display: flex; gap: 12px; align-items: flex-start; }
 .app-content-body { flex: 1; min-width: 0; max-width: 880px; }
 #rightAside { width: 260px; flex: none; min-width: 0; }
@@ -269,7 +272,7 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
   #header_right.show .nav { flex-direction: column; align-items: stretch; }
   #header_right.show .nav a { display: block; text-align: center; }
   #aside.app-aside { display: none; top: 68px; }
-  #aside.app-aside.show { display: block !important; z-index: 80; }
+  #aside.app-aside.show { display: block !important; z-index: 45; }
   #rightAside { display: none; }
   .app-content, #footer.app-footer, body.read-mode .app-content, body.read-mode #footer.app-footer { margin-left: 8px; margin-right: 8px; }
   .app-content { margin-top: 64px; }
