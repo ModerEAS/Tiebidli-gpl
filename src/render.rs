@@ -173,6 +173,8 @@ pub async fn cross_stream_json(
             json!({
                 "coid": c.coid,
                 "author": c.author,
+                "author_url": c.url,
+                "avatar_url": comment_avatar_url(chrome, c),
                 "date": text::format_php_date(chrome.site.get_or("commentDateFormat", "Y-m-d H:i"), c.created, chrome.site.timezone()),
                 "iso": text::iso8601(c.created, chrome.site.timezone()),
                 "html": text::render_comment_html(&c.text, markdown),
@@ -480,16 +482,18 @@ fn push_comment(
             html_escape(&c.author)
         )
     };
-    let avatar = if chrome.site.flag("commentsAvatar", true) && !c.mail.is_empty() {
-        let hash = gravatar_hash(&c.mail);
-        let prefix = chrome.cfg.gravatar_prefix.trim_end_matches('/');
-        let rating = chrome.site.get_or("commentsAvatarRating", "G");
-        format!(
-            "<img class=\"avatar\" alt=\"{}\" src=\"{prefix}/{hash}?s=32&amp;r={rating}&amp;d=mm\" width=\"32\" height=\"32\">",
-            html_escape(&c.author)
-        )
-    } else {
-        String::new()
+    let avatar = {
+        let url = comment_avatar_url(chrome, c);
+        if url.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<a class=\"pull-left thumb-sm comment-avatar\" rel=\"nofollow\">\
+                 <img class=\"img-40px photo\" alt=\"{}\" src=\"{}\" width=\"40\" height=\"40\" loading=\"lazy\"></a>",
+                html_escape(&c.author),
+                html_escape(&url),
+            )
+        }
     };
     let when = text::format_php_date(
         chrome.site.get_or("commentDateFormat", "Y-m-d H:i"),
@@ -517,10 +521,14 @@ fn push_comment(
     };
     html.push_str(&format!(
         "<li itemscope itemtype=\"http://schema.org/UserComments\" id=\"comment-{id}\" class=\"{class}\">\
-         <div class=\"comment-author\" itemprop=\"creator\" itemscope itemtype=\"http://schema.org/Person\">\
-         <span itemprop=\"image\">{avatar}</span><cite class=\"fn\" itemprop=\"name\">{cite}</cite></div>\
-         <div class=\"comment-meta\"><a href=\"{permalink}#comment-{id}\"><time itemprop=\"commentTime\" datetime=\"{iso}\">{when}</time></a></div>\
-         <div class=\"comment-content\" itemprop=\"commentText\">{body}</div>{reply}",
+         <div id=\"div-comment-{id}\" class=\"comment-body\">{avatar}\
+         <div class=\"m-b m-l-xxl\">\
+         <div class=\"comment-meta\"><span class=\"comment-author vcard\"><b class=\"fn\">{cite}</b>\
+         <a data-coid=\"{id}\" class=\"post-comment-star text-muted star_talk\"><i data-feather=\"heart\"></i>&nbsp;<span class=\"star_count\"></span></a></span>\
+         <div class=\"comment-metadata\"><a href=\"{permalink}#comment-{id}\">\
+         <time class=\"format_time\" datetime=\"{iso}\">{when}</time></a></div></div>\
+         <div class=\"comment-content\"><div class=\"comment-content-true\" itemprop=\"commentText\">{body}</div></div>\
+         {reply}</div></div>",
         id = c.coid,
         iso = html_escape(&text::iso8601(c.created, chrome.site.timezone())),
         when = html_escape(&when),
@@ -534,6 +542,17 @@ fn push_comment(
         html.push_str("</ol></div>");
     }
     html.push_str("</li>");
+}
+
+/// 评论头像（gravatar，同 Typecho 口径；关闭头像或无邮箱时为空）。
+fn comment_avatar_url(chrome: &Chrome<'_>, c: &Comment) -> String {
+    if !chrome.site.flag("commentsAvatar", true) || c.mail.is_empty() {
+        return String::new();
+    }
+    let hash = gravatar_hash(&c.mail);
+    let prefix = chrome.cfg.gravatar_prefix.trim_end_matches('/');
+    let rating = chrome.site.get_or("commentsAvatarRating", "G");
+    format!("{prefix}/{hash}?s=40&r={rating}&d=mm")
 }
 
 fn gravatar_hash(mail: &str) -> String {

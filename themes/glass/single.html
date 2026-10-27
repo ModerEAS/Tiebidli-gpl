@@ -47,20 +47,32 @@
         </nav>
     </article>
     {% if nav_slug == "cross" %}
-    <div id="cross_stream">
+    <div id="cross_stream" class="streamline">
         {% for c in cross_comments %}
-        <div class="panel" id="comment-{{ c.coid }}">
-            <div id="comment-{{ c.coid }}-body" data-id="comment-{{ c.coid }}" data-comment="{{ c.coid }}">
-                <span class="comment-author"><b>{{ c.author }}</b></span>
-                <time datetime="{{ c.iso }}">{{ c.date }}</time>
-                {{ c.html | safe }}
-            </div>
-            <div class="panel-footer" id="comment-{{ c.coid }}-footer" data-id="comment-{{ c.coid }}">
-                <div class="say_footer bg-white-pure">
-                    <a data-coid="{{ c.coid }}" class="text-muted star_talk">赞&nbsp;<span class="star_count">{{ c.stars }}</span></a>
-                    {% if c.edit_url %}
-                    <a href="{{ c.edit_url | safe }}" class="cross-edit-link" data-coid="{{ c.coid }}">编辑</a>
+        <div id="comment-{{ c.coid }}" class="comment-body">
+            {% if c.avatar_url %}
+            <a class="pull-left thumb-sm avatar"><img class="img-40px photo" src="{{ c.avatar_url | safe }}" alt="{{ c.author }}" width="40" height="40" loading="lazy"></a>
+            {% endif %}
+            <div class="time-machine panel">
+                <div class="panel-heading">
+                    <span class="arrow left"></span>
+                    {% if c.author_url %}
+                    <a href="{{ c.author_url | safe }}" target="_blank" rel="external nofollow">{{ c.author }}</a>
+                    {% else %}
+                    <span class="comment-author">{{ c.author }}</span>
                     {% endif %}
+                    <span class="pull-right"><a href="#comment-{{ c.coid }}"><time datetime="{{ c.iso }}">{{ c.date }}</time></a></span>
+                </div>
+                <div class="panel-body comment-content-true" id="comment-{{ c.coid }}-body" data-id="comment-{{ c.coid }}">
+                    {{ c.html | safe }}
+                </div>
+                <div class="panel-footer" id="comment-{{ c.coid }}-footer" data-id="comment-{{ c.coid }}">
+                    <div class="say_footer">
+                        <a data-coid="{{ c.coid }}" class="star_talk"><i data-feather="heart"></i>&nbsp;<span class="star_count">{{ c.stars }}</span></a>
+                        {% if c.edit_url %}
+                        <a href="{{ c.edit_url | safe }}" class="cross-edit-link" data-coid="{{ c.coid }}">编辑</a>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -69,15 +81,17 @@
     {% endif %}
     {% if not locked %}
     <div id="comments">
+        {% if nav_slug != "cross" %}
         {% if comment_count > 0 %}
         <h4 class="comments-title">已有 {{ comment_total }} 条评论</h4>
         <div id="post-comment-list"><ol class="comment-list">{{ comment_html | safe }}</ol></div>
         {{ comment_nav | safe }}
         {% endif %}
         {% if ping_html %}<h4>引用</h4><ol class="comment-list ping-list">{{ ping_html | safe }}</ol>{% endif %}
+        {% endif %}
         {% if allow_comment %}
-        <div id="{{ respond_id }}" class="respond comment-respond">
-            <h3 id="response">添加新评论</h3>
+        <div id="{{ respond_id }}" class="respond comment-respond panel">
+            <h3 id="response">添加新评论 <a id="cancel-comment-reply-link" href="#" style="display:none">取消回复</a></h3>
             {% if comment_error %}<p>{{ comment_error }}</p>{% endif %}
             <form method="post" action="{{ comment_url | safe }}" id="comment-form" role="form">
                 <input type="hidden" name="parent" id="comment-parent" value="{{ reply_to }}">

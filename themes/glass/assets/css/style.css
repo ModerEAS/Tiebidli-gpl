@@ -36,6 +36,8 @@ a:hover { text-decoration: underline; }
 #header.app-header,
 #aside.app-aside,
 .single-post.panel,
+.time-machine.panel,
+.respond.comment-respond.panel,
 #search_modal,
 #tocTree,
 #footer.app-footer {
@@ -328,3 +330,41 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
 @media (min-width: 768px) {
   .visible-xs { display: none !important; }
 }
+
+/* ---- 评论区 + 时光机（对齐现网卡片，自写玻璃；字色锁近白） ---- */
+#comments, #cross_stream { color: #f0f0f0; }
+#comments a, #cross_stream a { color: #f0f0f0; }
+.comment-list { list-style: none; margin: 0; padding: 0; }
+.comment-list > li.comment-body { padding: 14px 2px; border-bottom: 1px solid rgba(255,255,255,.12); overflow: hidden; }
+.comment-list > li.comment-body:last-child { border-bottom: none; }
+.pull-left.thumb-sm { float: left; }
+img.img-40px { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; border: 1px solid rgba(255,255,255,.22); }
+.m-l-xxl { margin-left: 52px; }
+.m-b { margin-bottom: 4px; }
+.comment-meta .comment-author .fn { font-weight: 600; font-style: normal; }
+.post-comment-star, .star_talk { display: inline-block; margin-left: 8px; font-size: 12px; color: #c8ccd2; cursor: pointer; }
+.post-comment-star svg, .star_talk svg { width: 13px; height: 13px; vertical-align: -2px; }
+.post-comment-star:hover, .star_talk:hover { color: #fff; }
+.comment-metadata .format_time { font-size: 12px; color: #c8ccd2; }
+.comment-content-true { margin-top: 6px; line-height: 1.7; }
+.comment-content-true p { margin: 0 0 8px; }
+.comment-reply { margin-top: 6px; font-size: 12px; }
+.comment-reply a { color: #c8ccd2; }
+.comment-children { margin: 6px 0 0 52px; }
+.comment-children .comment-list > li.comment-body { border-bottom: none; border-top: 1px solid rgba(255,255,255,.08); }
+/* 时光机流：头像 + 玻璃面板（左箭头） */
+#cross_stream .comment-body { overflow: hidden; margin-bottom: 14px; }
+.time-machine.panel { margin-left: 52px; border-radius: 12px; padding: 0; }
+.time-machine .panel-heading { position: relative; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.12); font-weight: 600; }
+.time-machine .panel-heading .pull-right { float: right; font-weight: 400; font-size: 12px; }
+.time-machine .panel-heading .pull-right a { color: #c8ccd2; }
+.arrow.left { position: absolute; left: -9px; top: 14px; width: 0; height: 0; border: 8px solid transparent; border-right-color: rgba(255,255,255,.25); border-left: none; }
+.time-machine .panel-body { padding: 12px 14px; }
+.time-machine .panel-footer { padding: 8px 14px; border-top: 1px solid rgba(255,255,255,.1); }
+.say_footer { display: flex; align-items: center; gap: 14px; font-size: 12px; color: #c8ccd2; }
+.say_footer a { color: #c8ccd2; }
+.cross-edit-link { margin-left: auto; }
+/* 回复表单玻璃卡 */
+.respond.comment-respond.panel { border-radius: 12px; padding: 18px; margin-top: 16px; }
+.respond h3 { margin: 0 0 10px; font-size: 15px; }
+#cancel-comment-reply-link { font-size: 12px; color: #c8ccd2; margin-left: 8px; }

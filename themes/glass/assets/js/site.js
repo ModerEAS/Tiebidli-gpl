@@ -39,6 +39,45 @@
     });
     try { if (window.feather) window.feather.replace(); } catch (e) {}
 
+    // 回复语义（对齐 TypechoComment.reply）：把表单搬到被回评论下，设 parent，显示取消。
+    var origParent = null;
+    window.TypechoComment = {
+      dom: function (id) { return document.getElementById(id); },
+      reply: function (cid, coid) {
+        var comment = this.dom(cid);
+        var response = document.querySelector('.comment-respond');
+        var input = document.getElementById('comment-parent');
+        if (!comment || !response) return true;
+        if (origParent === null && input) origParent = input.value;
+        if (!this.dom('comment-form-place-holder')) {
+          var holder = document.createElement('div');
+          holder.id = 'comment-form-place-holder';
+          response.parentNode.insertBefore(holder, response);
+        }
+        comment.appendChild(response);
+        if (input) input.value = String(coid);
+        var cancel = document.getElementById('cancel-comment-reply-link');
+        if (cancel) cancel.style.display = '';
+        var ta = response.querySelector('textarea');
+        if (ta) ta.focus();
+        return false;
+      },
+      cancelReply: function () {
+        var holder = this.dom('comment-form-place-holder');
+        var response = document.querySelector('.comment-respond');
+        var input = document.getElementById('comment-parent');
+        if (input && origParent !== null) input.value = origParent;
+        if (holder && response) holder.parentNode.insertBefore(response, holder);
+        var cancel = document.getElementById('cancel-comment-reply-link');
+        if (cancel) cancel.style.display = 'none';
+        return false;
+      }
+    };
+    var cancelLink = document.getElementById('cancel-comment-reply-link');
+    if (cancelLink) cancelLink.addEventListener('click', function (ev) { ev.preventDefault(); window.TypechoComment.cancelReply(); });
+    // PJAX 换页后重渲行内图标（评论区心形等）。
+    document.addEventListener('pjax:end', function () { try { if (window.feather) window.feather.replace(); } catch (e) {} });
+
     // 移动端导航 + 通用 toggle。
     document.querySelectorAll('[data-toggle-class]').forEach(function (btn) {
       btn.addEventListener('click', function () {
