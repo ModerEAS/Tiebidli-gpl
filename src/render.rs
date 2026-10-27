@@ -158,9 +158,11 @@ pub async fn cross_stream_json(
     let stars = crate::stars::comment_stars(db, post.cid).await;
     let markdown = chrome.site.flag("commentsMarkdown", false);
     let logged = chrome.viewer_uid != 0;
-    let items: Vec<Value> = comments
+    let mut stream: Vec<&Comment> = comments.iter().filter(|c| c.author_id != 0).collect();
+    // 最新在上：按 created/coid 降序（comments_for 是 ASC，展示侧反转）。
+    stream.sort_by(|a, b| (b.created, b.coid).cmp(&(a.created, a.coid)));
+    let items: Vec<Value> = stream
         .iter()
-        .filter(|c| c.author_id != 0)
         .map(|c| {
             let can_edit = chrome.viewer_uid != 0
                 && (c.author_id == chrome.viewer_uid || chrome.viewer_is_editor);

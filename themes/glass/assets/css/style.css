@@ -352,13 +352,16 @@ img.img-40px { width: 40px; height: 40px; border-radius: 10px; object-fit: cover
 .comment-reply a { color: #c8ccd2; }
 .comment-children { margin: 6px 0 0 52px; }
 .comment-children .comment-list > li.comment-body { border-bottom: none; border-top: 1px solid rgba(255,255,255,.08); }
-/* 时光机流：头像 + 玻璃面板（左箭头） */
-#cross_stream .comment-body { overflow: hidden; margin-bottom: 14px; }
-.time-machine.panel { margin-left: 52px; border-radius: 12px; padding: 0; }
+/* 时光机流：头像 + 玻璃气泡（左尖角指向头像） */
+#cross_stream .comment-body { overflow: visible; margin-bottom: 14px; }
+.time-machine.panel { border-radius: 12px; padding: 0; }
+#cross_stream .time-machine.m-l-lg { margin-left: 52px; }
 .time-machine .panel-heading { position: relative; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.12); font-weight: 600; }
+.pos-rlt { position: relative; }
 .time-machine .panel-heading .pull-right { float: right; font-weight: 400; font-size: 12px; }
 .time-machine .panel-heading .pull-right a { color: #c8ccd2; }
-.arrow.left { position: absolute; left: -9px; top: 14px; width: 0; height: 0; border: 8px solid transparent; border-right-color: rgba(255,255,255,.25); border-left: none; }
+/* 气泡尖角：贴在气泡左缘，指向头像（对话框 caret） */
+.arrow.left { position: absolute; left: -9px; top: 16px; width: 0; height: 0; border: 9px solid transparent; border-right-color: rgba(255,255,255,.22); border-left: none; }
 .time-machine .panel-body { padding: 12px 14px; }
 .time-machine .panel-footer { padding: 8px 14px; border-top: 1px solid rgba(255,255,255,.1); }
 .say_footer { display: flex; align-items: center; gap: 14px; font-size: 12px; color: #c8ccd2; }
@@ -374,12 +377,12 @@ img.img-40px { width: 40px; height: 40px; border-radius: 10px; object-fit: cover
 .say-count .h3 { font-size: 22px; font-weight: 700; margin-right: 8px; }
 .say-count small { color: #c8ccd2; }
 /* 左侧时间线 */
-#cross_stream.streamline { border-left: 2px solid rgba(255,255,255,.18); margin-left: 20px; padding-left: 0; }
+#cross_stream.streamline.b-l { border-left: 2px solid rgba(255,255,255,.18); margin-left: 20px; padding-left: 0; }
 #cross_stream .comment-body { position: relative; }
-#cross_stream .thumb-sm.avatar { margin-left: -21px; }
+#cross_stream .avatar.m-l-n-md { margin-left: -21px; position: relative; z-index: 2; }
 img.img-square { border-radius: 10px; }
-/* 发表框：大输入 + 工具行 */
-.say-compose { margin-top: 16px; }
+/* 发表框在流上方 */
+.say-compose { margin: 0 0 16px; }
 #say_form textarea { display: block; width: 100%; min-height: 88px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.3); color: var(--ink); resize: vertical; }
 .say-tools { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .secret-toggle { font-size: 13px; color: #c8ccd2; cursor: pointer; }

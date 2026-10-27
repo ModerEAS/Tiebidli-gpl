@@ -50,14 +50,26 @@
     <div class="say-head panel">
         <div class="say-count"><span class="h3">{{ cross_comments | length }}</span><small>说说</small></div>
     </div>
-    <div id="cross_stream" class="streamline">
+    {% if viewer_name %}
+    <!-- 只有登陆者才有权利发表说说 -->
+    <div id="{{ respond_id }}" class="respond comment-respond panel say-compose">
+        <form id="say_form" method="post" action="{{ comment_url | safe }}" role="form">
+            <textarea name="text" rows="3" maxlength="65525" required placeholder="分享新鲜事……"></textarea>
+            <div class="say-tools">
+                <label class="secret-toggle"><input type="checkbox" id="secret_comment_checkbox"> 私密</label>
+                <button type="submit"><span>发表新鲜事</span></button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+    <div id="cross_stream" class="streamline b-l">
         {% for c in cross_comments %}
         <div id="comment-{{ c.coid }}" class="comment-body">
             {% if c.avatar_url %}
-            <a class="pull-left thumb-sm avatar"><img class="img-40px photo" src="{{ c.avatar_url | safe }}" alt="{{ c.author }}" width="40" height="40" loading="lazy"></a>
+            <a class="pull-left thumb-sm avatar m-l-n-md"><img class="img-40px photo img-square" src="{{ c.avatar_url | safe }}" alt="{{ c.author }}" width="40" height="40" loading="lazy"></a>
             {% endif %}
-            <div class="time-machine panel">
-                <div class="panel-heading">
+            <div class="time-machine m-l-lg panel">
+                <div class="panel-heading pos-rlt">
                     <span class="arrow left"></span>
                     {% if c.author_url %}
                     <a href="{{ c.author_url | safe }}" target="_blank" rel="external nofollow">{{ c.author }}</a>
@@ -99,20 +111,7 @@
         {% endif %}
         {% if ping_html %}<h4>引用</h4><ol class="comment-list ping-list">{{ ping_html | safe }}</ol>{% endif %}
         {% endif %}
-        {% if nav_slug == "cross" %}
-        {% if viewer_name %}
-        <!-- 只有登陆者才有权利发表说说 -->
-        <div id="{{ respond_id }}" class="respond comment-respond panel say-compose">
-            <form id="say_form" method="post" action="{{ comment_url | safe }}" role="form">
-                <textarea name="text" rows="3" maxlength="65525" required placeholder="分享新鲜事……"></textarea>
-                <div class="say-tools">
-                    <label class="secret-toggle"><input type="checkbox" id="secret_comment_checkbox"> 私密</label>
-                    <button type="submit"><span>发表新鲜事</span></button>
-                </div>
-            </form>
-        </div>
-        {% endif %}
-        {% elif allow_comment %}
+        {% if nav_slug != "cross" and allow_comment %}
         <div id="{{ respond_id }}" class="respond comment-respond panel">
             <h3 id="response">添加新评论 <a id="cancel-comment-reply-link" href="#" style="display:none">取消回复</a></h3>
             {% if comment_error %}<p>{{ comment_error }}</p>{% endif %}
