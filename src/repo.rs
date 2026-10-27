@@ -223,7 +223,7 @@ impl Db {
             ""
         };
         let sql = format!(
-            "SELECT coid, cid, created, author, authorId, ownerId, mail, url, ip, text, type, status, parent \
+            "SELECT coid, cid, created, author, authorId, ownerId, mail, url, ip, agent, text, type, status, parent \
              FROM {} WHERE cid = ? AND (status = 'approved' OR (status = 'waiting' AND author = ? AND mail = ?)) \
              {type_sql} ORDER BY coid ASC",
             self.table("comments")
@@ -256,7 +256,7 @@ impl Db {
         now: i64,
     ) -> Result<Vec<(Comment, Post)>, sqlx::Error> {
         let sql = format!(
-            "SELECT cm.coid, cm.cid, cm.created, cm.author, cm.authorId, cm.ownerId, cm.mail, cm.url, cm.ip, \
+            "SELECT cm.coid, cm.cid, cm.created, cm.author, cm.authorId, cm.ownerId, cm.mail, cm.url, cm.ip, cm.agent, \
              cm.text, cm.type, cm.status, cm.parent \
              FROM {comments} cm JOIN {contents} c ON cm.cid = c.cid \
              WHERE cm.status = 'approved' AND cm.type = 'comment' AND c.status = 'publish' \
@@ -800,6 +800,7 @@ fn map_comment(row: &sqlx::any::AnyRow) -> Comment {
         mail: col_str(row, "mail"),
         url: col_str(row, "url"),
         ip: col_str(row, "ip"),
+        agent: col_str(row, "agent"),
         text: col_str(row, "text"),
         kind: col_str(row, "type"),
         status: col_str(row, "status"),

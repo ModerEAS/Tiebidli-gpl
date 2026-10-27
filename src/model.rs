@@ -83,6 +83,7 @@ pub struct Comment {
     pub mail: String,
     pub url: String,
     pub ip: String,
+    pub agent: String,
     pub text: String,
     pub kind: String,
     pub status: String,

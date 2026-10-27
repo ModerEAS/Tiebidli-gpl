@@ -187,6 +187,15 @@
         alert(TB.STAR_SUCCESS || '成功');
       });
     });
+    // 说说私密开关：提交时把正文包进 [secret]…[/secret]（渲染侧按登录态展示）。
+    var sayForm = document.getElementById('say_form');
+    if (sayForm) sayForm.addEventListener('submit', function () {
+      var box = document.getElementById('secret_comment_checkbox');
+      var ta = sayForm.querySelector('textarea[name="text"]');
+      if (box && box.checked && ta && ta.value.indexOf('[secret]') !== 0) {
+        ta.value = '[secret]' + ta.value + '[/secret]';
+      }
+    });
     document.querySelectorAll('.star_talk').forEach(function (el) {
       el.addEventListener('click', function (ev) {
         ev.preventDefault();

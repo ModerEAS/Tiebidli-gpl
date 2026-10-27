@@ -331,7 +331,7 @@ impl Db {
 
     pub async fn list_comments(&self, limit: i64) -> Result<Vec<Comment>, sqlx::Error> {
         let sql = format!(
-            "SELECT coid, cid, created, author, authorId, ownerId, mail, url, ip, text, type, status, parent \
+            "SELECT coid, cid, created, author, authorId, ownerId, mail, url, ip, agent, text, type, status, parent \
              FROM {} ORDER BY created DESC, coid DESC LIMIT ?",
             self.table("comments")
         );
@@ -566,7 +566,7 @@ impl Db {
 
     pub async fn comment_by_coid(&self, coid: i64) -> Result<Option<Comment>, sqlx::Error> {
         let sql = format!(
-            "SELECT coid, cid, created, author, authorId, ownerId, mail, url, ip, text, type, status, parent \
+            "SELECT coid, cid, created, author, authorId, ownerId, mail, url, ip, agent, text, type, status, parent \
              FROM {} WHERE coid = ? LIMIT 1",
             self.table("comments")
         );
@@ -1507,6 +1507,7 @@ fn map_comment_row(row: &sqlx::any::AnyRow) -> Comment {
         mail: col_str(row, "mail"),
         url: col_str(row, "url"),
         ip: col_str(row, "ip"),
+        agent: col_str(row, "agent"),
         text: col_str(row, "text"),
         kind: col_str(row, "type"),
         status: col_str(row, "status"),

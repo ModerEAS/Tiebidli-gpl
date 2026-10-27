@@ -368,3 +368,22 @@ img.img-40px { width: 40px; height: 40px; border-radius: 10px; object-fit: cover
 .respond.comment-respond.panel { border-radius: 12px; padding: 18px; margin-top: 16px; }
 .respond h3 { margin: 0 0 10px; font-size: 15px; }
 #cancel-comment-reply-link { font-size: 12px; color: #c8ccd2; margin-left: 8px; }
+
+/* ---- 时光机说说（对齐主题源码结构，自写玻璃） ---- */
+.say-head.panel { border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; }
+.say-count .h3 { font-size: 22px; font-weight: 700; margin-right: 8px; }
+.say-count small { color: #c8ccd2; }
+/* 左侧时间线 */
+#cross_stream.streamline { border-left: 2px solid rgba(255,255,255,.18); margin-left: 20px; padding-left: 0; }
+#cross_stream .comment-body { position: relative; }
+#cross_stream .thumb-sm.avatar { margin-left: -21px; }
+img.img-square { border-radius: 10px; }
+/* 发表框：大输入 + 工具行 */
+.say-compose { margin-top: 16px; }
+#say_form textarea { display: block; width: 100%; min-height: 88px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.3); color: var(--ink); resize: vertical; }
+.say-tools { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.secret-toggle { font-size: 13px; color: #c8ccd2; cursor: pointer; }
+.say-tools button[type="submit"] { margin-left: auto; padding: 7px 18px; border-radius: 10px; cursor: pointer; color: #fff; border: 1px solid rgba(255,255,255,.25); background: linear-gradient(rgba(38,52,76,.92), rgba(38,52,76,.92)); }
+.ua-line { display: inline-flex; align-items: center; gap: 4px; }
+.ua-line svg { width: 13px; height: 13px; }
+.say-empty .time-machine { margin-left: 0; }

@@ -146,7 +146,9 @@ pub struct SingleView<'a> {
 }
 
 /// 时光机页评论流（`nav_slug == "cross"` 时模板用它代替默认评论树）。
-/// 每条含点赞数；作者本人或编辑可得 `edit_url`（`_`-token 绑定本页 URL）。
+/// 对齐主题源码：只收录登录用户（`author_id != 0`，过滤游客）；每条含点赞数；
+/// 作者本人或编辑可得 `edit_url`（`_`-token 绑定本页 URL）。
+/// `[secret]…[/secret]` 私密说说：登录可见原文，未登录只看占位。
 pub async fn cross_stream_json(
     db: &crate::db::Db,
     chrome: &Chrome<'_>,
@@ -155,8 +157,10 @@ pub async fn cross_stream_json(
 ) -> Value {
     let stars = crate::stars::comment_stars(db, post.cid).await;
     let markdown = chrome.site.flag("commentsMarkdown", false);
+    let logged = chrome.viewer_uid != 0;
     let items: Vec<Value> = comments
         .iter()
+        .filter(|c| c.author_id != 0)
         .map(|c| {
             let can_edit = chrome.viewer_uid != 0
                 && (c.author_id == chrome.viewer_uid || chrome.viewer_is_editor);
@@ -175,9 +179,10 @@ pub async fn cross_stream_json(
                 "author": c.author,
                 "author_url": c.url,
                 "avatar_url": comment_avatar_url(chrome, c),
+                "agent": short_agent(&c.agent),
                 "date": text::format_php_date(chrome.site.get_or("commentDateFormat", "Y-m-d H:i"), c.created, chrome.site.timezone()),
                 "iso": text::iso8601(c.created, chrome.site.timezone()),
-                "html": text::render_comment_html(&c.text, markdown),
+                "html": cross_body_html(&c.text, markdown, logged),
                 "stars": stars.get(&c.coid).copied().unwrap_or(0),
                 "edit_url": edit_url,
             })
@@ -542,6 +547,28 @@ fn push_comment(
         html.push_str("</ol></div>");
     }
     html.push_str("</li>");
+}
+
+/// UA 简写（说说 footer「发自」用；无则空，模板省略）。
+fn short_agent(agent: &str) -> String {
+    let a = agent.trim();
+    if a.is_empty() {
+        return String::new();
+    }
+    text::truncate_chars(&a.replace(['\r', '\n', '\t'], " "), 24)
+}
+
+/// 说说正文：`[secret]…[/secret]` 仅登录可见，否则占位。
+fn cross_body_html(raw: &str, markdown: bool, logged: bool) -> String {
+    let (start, end) = ("[secret]", "[/secret]");
+    if let (Some(i), Some(j)) = (raw.find(start), raw.rfind(end)) {
+        let inner = &raw[i + start.len()..j];
+        if logged {
+            return text::render_comment_html(inner, markdown);
+        }
+        return "<p>此条为私密说说，仅发布者可见</p>".to_string();
+    }
+    text::render_comment_html(raw, markdown)
 }
 
 /// 评论头像（gravatar，同 Typecho 口径；关闭头像或无邮箱时为空）。
