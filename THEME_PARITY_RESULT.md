@@ -54,10 +54,8 @@
 
 ## 刻意跳过
 
-- 商业主题原版 CSS/JS（压缩包与闭源脚本）：
-  **未提交任何原文件**，样式/胶水全部自写。
+- 第三方商业主题闭源资源：不依赖、不打包进本仓库；`themes/glass` 的 CSS/JS 均为自写。
 - 追番/bilifan/douban、空 GitHub 日历、坏 SW、后台 MultiUpload、未引用的 EditorMD/Mailer。
-- `[secret]` 短代码（README 刻意不做；时光机正文原样输出）。
 - PHP `functions.php` 执行、动态扫 `usr/plugins`（架构不做）。
 - ECharts：日历/雷达只做有数据的占位列表，不引 ECharts。
 - 评论树保持引擎现有 class（未逐条改成主题自定义结构），时光机流除外。
