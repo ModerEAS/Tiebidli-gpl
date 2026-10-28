@@ -1223,7 +1223,7 @@ pub(crate) async fn cross_edit_route(
 }
 
 /// 时光机评论编辑/删除（对齐主题 `CrossAction` 的登录 + contributor 门禁与 `_` 校验）。
-/// 现网把编辑入口直接渲进 HTML（未登录点开才 302），这里同样只做 API 门禁。
+/// 参照站把编辑入口直接渲进 HTML（未登录点开才 302），这里同样只做 API 门禁。
 async fn cross_edit_action(
     state: &AppState,
     site: &crate::model::Site,

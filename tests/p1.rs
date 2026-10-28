@@ -754,7 +754,7 @@ async fn access_feed_entrypoint_ua_parity() {
 
 #[tokio::test]
 async fn theme_parity_layout_and_actions() {
-    // 新主题骨架：THEME_DIR 指向 themes/glass，断言现网对齐的 class/节点。
+    // 新主题骨架：THEME_DIR 指向 themes/glass，断言参照站对齐的 class/节点。
     let (app, db) = boot_theme().await;
     let cookie = login(&app).await;
     activate(&app, &db, &cookie, "Access").await;

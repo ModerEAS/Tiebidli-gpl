@@ -709,9 +709,9 @@ fn shell(
     })
 }
 
-/// 侧栏分组文案（对齐现网 i18n 实测）：
+/// 侧栏分组文案（对齐参照站 i18n 实测）：
 /// zh（zh-CN / zh-HK / zh-TW …）→ 首页/分类/页面/友链；其余 → Home/Categories/Pages/Links。
-/// 优先级：Accept-Language 主语言；无头或解析不出 → 英文（与现网 en 实测一致）。
+/// 优先级：Accept-Language 主语言；无头或解析不出 → 英文（与参照站 en 实测一致）。
 /// 自定义页面标题（时间线、nCoV 等）走数据源原标题，不在这里硬翻。
 pub fn nav_labels(accept_language: Option<&str>) -> Value {
     let zh = accept_language
@@ -749,7 +749,7 @@ fn site_stats_json(chrome: &Chrome<'_>) -> Value {
     })
 }
 
-/// 站长名：取最新文章作者（与现网 ModerRAS 一致），无文章回站点标题。
+/// 站长名：取最新文章作者，无文章回站点标题。
 fn owner_name(chrome: &Chrome<'_>) -> String {
     chrome
         .recent_posts
@@ -759,7 +759,7 @@ fn owner_name(chrome: &Chrome<'_>) -> String {
         .unwrap_or_else(|| chrome.site.get_or("title", "Tiebidli").to_string())
 }
 
-/// 运行天数：满年按现网 `9 Y 156 D` 格式，否则 `N D`。
+/// 运行天数：满年按参照站 `9 Y 156 D` 格式，否则 `N D`。
 fn days_label(days: i64) -> String {
     if days >= 365 {
         format!("{} Y {} D", days / 365, days % 365)
@@ -768,7 +768,7 @@ fn days_label(days: i64) -> String {
     }
 }
 
-/// 最后活动：贴近现网 `1 Year Ago` 口径的相对时间。
+/// 最后活动：贴近参照站 `1 Year Ago` 口径的相对时间。
 fn rel_time(now: i64, ts: i64) -> String {
     let d = now.saturating_sub(ts);
     if ts <= 0 {

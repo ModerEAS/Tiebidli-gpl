@@ -11,7 +11,7 @@
 
   onReady(function () {
     // 暗色开关（默认 light，与 LocalConst THEME_DARK_MODE 一致）。
-    // 深浅色开关（默认深色贴近现网观感；light 为干净浅色备选）。
+    // 深浅色开关（默认深色贴近参照站观感；light 为干净浅色备选）。
     var toggle = document.getElementById('dark_mode_toggle');
     function paintToggle() {
       if (toggle) toggle.textContent = document.body.classList.contains('light') ? '暗色' : '浅色';
@@ -29,7 +29,7 @@
       paintToggle();
     });
 
-    // 侧栏折叠组（对齐现网）：点标题切换展开/收起；feather 线框图标（CDN 失败静默跳过，文字仍在）。
+    // 侧栏折叠组（对齐参照站）：点标题切换展开/收起；feather 线框图标（CDN 失败静默跳过，文字仍在）。
     document.querySelectorAll('#aside [data-nav-toggle]').forEach(function (t) {
       t.addEventListener('click', function (ev) {
         ev.preventDefault();
@@ -89,7 +89,7 @@
       });
     });
 
-    // 右栏图标页签（现网 widget-tabs）：点图标切热门/评论/随机。
+    // 右栏图标页签（参照站 widget-tabs）：点图标切热门/评论/随机。
     document.querySelectorAll('#right_first_section .tablist a[data-target]').forEach(function (tab) {
       tab.addEventListener('click', function (ev) {
         ev.preventDefault();

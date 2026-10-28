@@ -1,4 +1,4 @@
-/* 现网观感重画 + 克制液态玻璃（自写）：深色优先，冷静青色壁纸打底。
+/* 参照站观感重画 + 克制液态玻璃（自写）：深色优先，冷静青色壁纸打底。
    顶栏全宽（含品牌角），侧栏在其下方窄列；卡片半透明深色，大圆角；点缀薄荷青。
    折射只挂顶栏/侧栏/卡片（Chromium url 滤镜，其它回退模糊），正文始终清晰。 */
 :root {
@@ -122,7 +122,7 @@ a:hover { text-decoration: underline; }
   overflow-y: auto; padding: 16px 12px; font-size: 13px;
 }
 #aside.app-aside .nav { flex-direction: column; gap: 2px; }
-/* 顶层链接：左侧 40px 独立图标块 + 右侧文字（对齐现网 a.auto 结构，整行可点） */
+/* 顶层链接：左侧 40px 独立图标块 + 右侧文字（对齐参照站 a.auto 结构，整行可点） */
 #aside.app-aside .nav > li > a.auto {
   display: block; overflow: hidden;
   padding: 0 10px 0 0; border-radius: 10px; cursor: pointer;
@@ -135,7 +135,7 @@ a:hover { text-decoration: underline; }
 }
 .nav-icon svg { width: 1.1em; height: 1.1em; vertical-align: -0.15em; }
 #aside .nav > li > a.auto .pull-right { float: right; line-height: 40px; display: inline-block; }
-/* 分区垫片（现网 padder li，组间留白） */
+/* 分区垫片（参照站 padder li，组间留白） */
 #aside .nav > li.padder { height: 10px; }
 /* 折叠箭头：纯 CSS 三角，收起向右、展开向下（替 fontello） */
 .chevron { display: inline-block; vertical-align: middle; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s ease; }
@@ -146,7 +146,7 @@ li.active > a.auto .chevron { transform: rotate(45deg); }
 #aside.app-aside .nav-sub a { display: block; padding: 6px 10px; border-radius: 8px; }
 #aside.app-aside .nav-sub a:hover { background: rgba(255,255,255,.09); }
 #aside .badge.pull-right { float: right; background: var(--chip); border-radius: 999px; padding: 0 8px; font-size: 12px; }
-/* 侧栏字色贴近现网近白：显式锁死，不跟自适应字色对 --link 的偏蓝改写 */
+/* 侧栏字色贴近参照站近白：显式锁死，不跟自适应字色对 --link 的偏蓝改写 */
 #aside, #aside a { color: #f0f0f0; }
 #aside a:hover { color: #ffffff; }
 #aside .nav-icon { color: #f0f0f0; }
@@ -155,7 +155,7 @@ li.active > a.auto .chevron { transform: rotate(45deg); }
 /* 日历/雷达占位列表：与分组子菜单同式（名称 + 右侧 badge），常显 */
 #aside .top-echart { margin-top: 6px; }
 #aside .top-echart .nav-sub.dk { display: flex; }
-/* 分组线（现网 li.line.dk） */
+/* 分组线（参照站 li.line.dk） */
 #aside .line.dk { height: 1px; margin: 8px 4px; background: rgba(255,255,255,.14); }
 /* 文档流撑满视口：内容 flex 占位，页脚跟在末尾，短内容时沉底不悬空 */
 #app.alllayout { display: flex; flex-direction: column; min-height: 100vh; }
@@ -331,7 +331,7 @@ body.read-mode #footer.app-footer { margin-left: 12px; }
   .visible-xs { display: none !important; }
 }
 
-/* ---- 评论区 + 时光机（对齐现网卡片，自写玻璃；字色锁近白） ---- */
+/* ---- 评论区 + 时光机（对齐参照站卡片，自写玻璃；字色锁近白） ---- */
 #comments, #cross_stream { color: #f0f0f0; }
 #comments a, #cross_stream a { color: #f0f0f0; }
 .comment-list { list-style: none; margin: 0; padding: 0; }
