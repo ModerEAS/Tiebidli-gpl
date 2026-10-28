@@ -660,6 +660,8 @@ fn shell(
         json!({"author": c.author, "url": href,
                "excerpt": text::truncate_chars(&text::plain_text(&c.text), 35)})
     }).collect();
+    // 自定义左侧导航：外观设置 `asideItems`，空配置只剩首页。
+    let aside_ctx = crate::themes::parse_aside_items(&site.theme_str("asideItems"));
     json!({
         "page_title": page_title,
         "site_title": site.get_or("title", "Tiebidli"),
@@ -670,6 +672,10 @@ fn shell(
         "static": static_path,
         "theme_ready": chrome.theme_ready,
         "logo_url": site.theme_str("logoUrl"),
+        "hide_home": aside_ctx.0,
+        "aside_items": aside_ctx.1.iter().map(|a| json!({
+            "name": a.name, "href": a.href, "icon": a.icon, "target": a.target,
+        })).collect::<Vec<_>>(),
         "year": text::ymd(chrome.now, site.timezone()).0,
         "feed_url": links::feed_path(site, "/"),
         "comments_feed_url": links::feed_path(site, "/comments/"),

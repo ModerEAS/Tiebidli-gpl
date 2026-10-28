@@ -70,7 +70,84 @@ pub fn style_ready(cfg: &Config, theme_name: &str) -> bool {
 }
 
 pub fn has_config(name: &str) -> bool {
-    name == "default"
+    name == "default" || name == "glass"
+}
+
+/// 自定义左侧导航项（外观设置 `asideItems` JSON 数组解析结果）。
+/// 只取扁平字段：`name` / `link` / `status` / `class` / `feather` / `target`。
+/// `sub` 嵌套不在此实现（本次只做扁平项）。
+pub struct AsideItem {
+    pub name: String,
+    pub href: String,
+    pub icon: String,
+    pub target: String,
+}
+
+/// 解析 `asideItems` 字符串，返回（是否隐藏默认首页，导航项列表）。
+/// 写法与参照实现一致：配置是若干 JSON 对象片段，解析时补齐外层 `[]` 并容忍尾逗号；
+/// 非法 JSON 直接视为空列表，不抛错。`status` 为关闭类取值（`HIDE`，大小写不敏感）时跳过该项；
+/// `name` 为 `home` 且 `status` 为 `HIDE` 时还隐藏默认首页（与参照源码行为一致）。
+pub fn parse_aside_items(raw: &str) -> (bool, Vec<AsideItem>) {
+    let mut text = raw.trim().to_string();
+    if text.is_empty() {
+        return (false, Vec::new());
+    }
+    while text.ends_with(',') {
+        text.pop();
+    }
+    let values: Vec<serde_json::Value> =
+        serde_json::from_str(&format!("[{text}]")).unwrap_or_default();
+    let mut hide_home = false;
+    let mut items = Vec::new();
+    for value in &values {
+        let name = value
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let status = value
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_uppercase();
+        if status == "HIDE" {
+            if name == "home" {
+                hide_home = true;
+            }
+            continue;
+        }
+        let feather = value
+            .get("feather")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let class = value
+            .get("class")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let icon = if feather.is_empty() { class } else { feather }.to_string();
+        let target = value
+            .get("target")
+            .and_then(|v| v.as_str())
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .unwrap_or("_self")
+            .to_string();
+        let href = value
+            .get("link")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        items.push(AsideItem { name, href, icon, target });
+    }
+    (hide_home, items)
 }
 
 pub fn config_available(cfg: &Config, site: &Site) -> bool {
@@ -441,6 +518,9 @@ pub fn config_main(site: &Site, flash: &str) -> Result<String, &'static str> {
     if !has_config(&active) {
         return Err("该外观没有设置项");
     }
+    if active == "glass" {
+        return Ok(glass_config_main(site, flash));
+    }
     let logo = site.theme_str("logoUrl");
     let selected = match site.theme.get_key("sidebarBlock") {
         Some(value) => value.string_list(),
@@ -465,8 +545,34 @@ pub fn config_main(site: &Site, flash: &str) -> Result<String, &'static str> {
     ))
 }
 
+/// glass 外观的设置表单：LOGO 地址 + 自定义左侧导航（`asideItems` JSON 数组）。
+/// 留空表示顶区只显示首页；只做扁平项，不支持嵌套。
+fn glass_config_main(site: &Site, flash: &str) -> String {
+    let logo = site.theme_str("logoUrl");
+    let aside = site.theme_str("asideItems");
+    format!(
+        r#"<div class="row typecho-page-main" role="main"><div class="col-mb-12">{tabs}</div><div class="col-mb-12 col-tb-8 col-tb-offset-2" role="form">{flash}<form action="/action/themes-edit?config" method="post"><ul class="typecho-option"><li><label class="typecho-label" for="logoUrl">站点 LOGO 地址</label><input id="logoUrl" name="logoUrl" type="text" class="w-100" value="{logo}"><p class="description">在这里填入一个图片 URL 地址, 以在网站标题前加上一个 LOGO</p></li><li><label class="typecho-label" for="asideItems">左侧边栏自定义导航</label><textarea id="asideItems" name="asideItems" class="w-100 mono" rows="8" placeholder='{example}'>{aside}</textarea><p class="description">JSON 数组，每项含 name（名称）、link（链接）、feather（图标名，优先）或 class（图标类）、target（默认 _self）。留空则顶区只显示首页；status 填 HIDE 可隐藏该项，name 为 home 且 status 为 HIDE 时连默认首页一起隐藏。</p></li></ul><ul class="typecho-option typecho-option-submit"><li><button type="submit" class="btn primary">保存设置</button></li></ul></form></div></div>"#,
+        tabs = tabs("config", true),
+        logo = html_escape(&logo),
+        aside = html_escape(&aside),
+        example = html_escape(
+            "{\"name\": \"归档\", \"link\": \"/archives/\", \"feather\": \"archive\", \"target\": \"_self\"},"
+        ),
+    )
+}
+
 pub fn default_theme_value() -> String {
     theme_config_value("", &SIDEBAR_BLOCKS.iter().map(|(k, _)| *k).collect::<Vec<_>>())
+}
+
+pub fn glass_config_value(logo: &str, aside: &str) -> String {
+    phpval::serialize(&PhpValue::Array(vec![
+        (PhpValue::String("logoUrl".into()), PhpValue::String(logo.into())),
+        (
+            PhpValue::String("asideItems".into()),
+            PhpValue::String(aside.into()),
+        ),
+    ]))
 }
 
 pub fn theme_config_value(logo: &str, blocks: &[&str]) -> String {
@@ -506,7 +612,12 @@ pub async fn change_theme(db: &Db, cfg: &Config, site: &Site, requested: &str) -
                 .map_err(|_| "外观设置保存失败")?;
         }
         if has_config(name) {
-            db.set_option(&format!("theme:{name}"), &default_theme_value())
+            let value = if name == "glass" {
+                glass_config_value("", "")
+            } else {
+                default_theme_value()
+            };
+            db.set_option(&format!("theme:{name}"), &value)
                 .await
                 .map_err(|_| "外观设置保存失败")?;
         }
@@ -517,21 +628,43 @@ pub async fn change_theme(db: &Db, cfg: &Config, site: &Site, requested: &str) -
     Ok(())
 }
 
-pub async fn save_theme_config(db: &Db, site: &Site, logo: &str, posted: &[String]) -> Result<(), &'static str> {
+pub async fn save_theme_config(
+    db: &Db,
+    site: &Site,
+    logo: &str,
+    posted: &[String],
+    aside_raw: &str,
+) -> Result<(), &'static str> {
     let name = site.theme_name();
     if !has_config(&name) {
         return Err("该外观没有设置项");
     }
     let mut logo = logo.trim().to_string();
     if logo.len() > 2000 {
-        logo.truncate(2000);
+        let mut end = 2000;
+        while !logo.is_char_boundary(end) {
+            end -= 1;
+        }
+        logo.truncate(end);
     }
-    let blocks: Vec<&str> = SIDEBAR_BLOCKS
-        .iter()
-        .map(|(key, _)| *key)
-        .filter(|key| posted.iter().any(|item| item == key))
-        .collect();
-    let value = theme_config_value(&logo, &blocks);
+    let value = if name == "glass" {
+        let mut aside = aside_raw.trim().to_string();
+        if aside.len() > 65535 {
+            let mut end = 65535;
+            while !aside.is_char_boundary(end) {
+                end -= 1;
+            }
+            aside.truncate(end);
+        }
+        glass_config_value(&logo, &aside)
+    } else {
+        let blocks: Vec<&str> = SIDEBAR_BLOCKS
+            .iter()
+            .map(|(key, _)| *key)
+            .filter(|key| posted.iter().any(|item| item == key))
+            .collect();
+        theme_config_value(&logo, &blocks)
+    };
     db.set_option(&format!("theme:{name}"), &value)
         .await
         .map_err(|_| "外观设置保存失败")?;
@@ -547,6 +680,68 @@ mod tests {
     use super::*;
     use crate::model::site_from_parts;
     use std::collections::HashMap;
+
+    #[test]
+    fn aside_items_empty_and_invalid_yield_no_items() {
+        for raw in ["", "   ", "{not json", "{\"name\": ", "[[[]"] {
+            let (hide, items) = parse_aside_items(raw);
+            assert!(!hide, "{raw}");
+            assert!(items.is_empty(), "{raw}");
+        }
+    }
+
+    #[test]
+    fn aside_items_parse_tolerates_trailing_comma() {
+        let raw = r#"{"name": "归档", "link": "/archives/", "feather": "archive", "target": "_blank"},
+            {"name": "旧站", "link": "https://old.example", "class": "glyphicon glyphicon-star"},"#;
+        let (hide, items) = parse_aside_items(raw);
+        assert!(!hide);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "归档");
+        assert_eq!(items[0].href, "/archives/");
+        assert_eq!(items[0].icon, "archive");
+        assert_eq!(items[0].target, "_blank");
+        // 无 feather 时回落到 class，无 target 时默认 _self。
+        assert_eq!(items[1].icon, "glyphicon glyphicon-star");
+        assert_eq!(items[1].target, "_self");
+    }
+
+    #[test]
+    fn aside_items_hide_status_skips_item() {
+        let raw = r#"{"name": "home", "status": "HIDE"},{"name": "可见", "link": "/x/"}"#;
+        let (hide, items) = parse_aside_items(raw);
+        assert!(hide);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "可见");
+        let (_, items) = parse_aside_items(r#"{"name": "下线", "link": "/y/", "status": "hide"}"#);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn glass_config_value_roundtrips_through_php_serialized_option() {
+        let aside = "{\"name\": \"归档\", \"link\": \"/archives/\"},";
+        let raw = glass_config_value("https://example.com/logo.png", aside);
+        let parsed = crate::phpval::parse_php(&raw).expect("php serialize");
+        assert_eq!(
+            parsed
+                .get_key("asideItems")
+                .and_then(|v| v.to_string_value()),
+            Some(aside.to_string())
+        );
+        assert_eq!(
+            parsed.get_key("logoUrl").and_then(|v| v.to_string_value()),
+            Some("https://example.com/logo.png".to_string())
+        );
+        // 读回后再解析：项可渲染。
+        let back = parsed
+            .get_key("asideItems")
+            .and_then(|v| v.to_string_value())
+            .unwrap_or_default();
+        let (hide, items) = parse_aside_items(&back);
+        assert!(!hide);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].href, "/archives/");
+    }
 
     #[test]
     fn template_names_are_html_only() {

@@ -34,6 +34,8 @@ async fn boot_inner(template_dir: Option<std::path::PathBuf>) -> (axum::Router, 
     let theme_dir = themes.join("default");
     std::fs::create_dir_all(theme_dir.join("assets/css")).expect("theme dir");
     std::fs::write(theme_dir.join("assets/css/style.css"), "/* test */").expect("marker");
+    // glass 外观目录存在，后台才能进「设置外观」并落库 theme:glass。
+    std::fs::create_dir_all(themes.join("glass")).expect("glass theme dir");
     cfg.theme_dir = theme_dir;
     let backups = path.with_extension("backups");
     std::fs::create_dir_all(&backups).expect("backups");
@@ -909,4 +911,80 @@ async fn cross_edit_authed_flow() {
     for needle in ["cross_stream", "star_talk", "新内容"] {
         assert!(cross.contains(needle), "missing {needle}");
     }
+}
+
+#[tokio::test]
+async fn glass_aside_items_config_and_render() {
+    // glass 外观：空配置只有首页；设置页可存 asideItems；前台按 Home→自定义→分隔线渲染；非法 JSON 不崩。
+    let (app, db) = boot_theme().await;
+    let cookie = login(&app).await;
+
+    // 未启用 glass 前：active 为默认外观，设置页是默认表单（无 asideItems）。
+    let (status, page, _, _) = call(
+        &app,
+        Request::builder().uri("/admin/options-theme.php").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(!page.contains("asideItems"), "{page}");
+
+    // 启用 glass（写默认空配置）。
+    let (path, referer) = sign_action(&db, "/action/themes-edit?change=glass").await;
+    let (status, _, headers) = post_form(&app, &path, "", &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(headers.get("location").unwrap().to_str().unwrap().contains("notice="));
+
+    // 设置页可进，含 asideItems 大文本框。
+    let (status, page, _, _) = call(
+        &app,
+        Request::builder().uri("/admin/options-theme.php").header("cookie", &cookie).body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("asideItems"), "{page}");
+    assert!(page.contains("左侧边栏自定义导航"), "{page}");
+
+    // 空配置：只有首页，无自定义项。
+    let (status, home, _, _) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK, "{home}");
+    let home_pos = home.find("data-feather=\"home\"").expect("home icon");
+    let line_pos = home.find("line dk").expect("divider");
+    assert!(home_pos < line_pos, "home before divider");
+    assert!(!home.contains("custom-nav-test.html"), "{home}");
+
+    // 保存有效 JSON：前台出对应链接，位置在 Home 与分隔线之间。
+    let aside = r#"{"name": "测试导航", "link": "/custom-nav-test.html", "feather": "star", "target": "_blank"}"#;
+    let (path, referer) = sign_action(&db, "/action/themes-edit?config").await;
+    let form = format!("logoUrl=&asideItems={}", urlencoding::encode(aside));
+    let (status, _, headers) = post_form(&app, &path, &form, &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(headers.get("location").unwrap().to_str().unwrap().contains("notice="));
+    // 保存后读回：库里 theme:glass 含提交的原文。
+    let stored: Option<String> =
+        sqlx::query_scalar(r#"SELECT value FROM "typecho_options" WHERE name = 'theme:glass'"#)
+            .fetch_optional(&db.pool)
+            .await
+            .unwrap()
+            .flatten();
+    assert!(stored.as_deref().is_some_and(|v| v.contains("/custom-nav-test.html")), "{stored:?}");
+    let (status, page, _, _) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    // 注：href 里的 `/` 会被模板转义为 `&#x2f;`，断言用不含斜杠的 marker。
+    for needle in ["custom-nav-test.html", "data-feather=\"star\"", "target=\"_blank\"", "测试导航"] {
+        assert!(page.contains(needle), "missing {needle}");
+    }
+    let home_pos = page.find("data-feather=\"home\"").expect("home icon");
+    let item_pos = page.find("custom-nav-test.html").expect("custom item");
+    let line_pos = page.find("line dk").expect("divider");
+    assert!(home_pos < item_pos && item_pos < line_pos, "order: home, custom, divider");
+
+    // 非法 JSON：不崩，只显示首页。
+    let (path, referer) = sign_action(&db, "/action/themes-edit?config").await;
+    let (status, _, _) =
+        post_form(&app, &path, "logoUrl=&asideItems=%7Boops", &cookie, referer).await;
+    assert_eq!(status, StatusCode::FOUND);
+    let (status, page, _, _) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("data-feather=\"home\""), "{page}");
+    assert!(!page.contains("custom-nav-test.html"), "{page}");
 }

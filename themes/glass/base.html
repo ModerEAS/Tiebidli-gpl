@@ -100,12 +100,22 @@
                 </div>
                 <nav class="navi clearfix" role="navigation">
                     <ul class="nav">
+                        {% if not hide_home %}
                         <li>
                             <a href="/" class="auto">
                                 <span class="nav-icon"><i data-feather="home"></i></span>
                                 <span>{{ nav_labels.home }}</span>
                             </a>
                         </li>
+                        {% endif %}
+                        {% for a in aside_items %}
+                        <li>
+                            <a href="{{ a.href }}" target="{{ a.target }}" class="auto">
+                                {% if a.icon %}<span class="nav-icon"><i data-feather="{{ a.icon }}"></i></span>{% endif %}
+                                <span>{{ a.name }}</span>
+                            </a>
+                        </li>
+                        {% endfor %}
                         <li class="line dk"></li>
                         <li class="padder" aria-hidden="true"></li>
                         <li class="active">

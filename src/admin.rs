@@ -917,7 +917,8 @@ async fn themes_edit_action(
             .cloned()
             .unwrap_or_default();
         let logo = form.get("logoUrl").cloned().unwrap_or_default();
-        return match crate::themes::save_theme_config(&state.db, &site, &logo, &posted).await {
+        let aside = form.get("asideItems").cloned().unwrap_or_default();
+        return match crate::themes::save_theme_config(&state.db, &site, &logo, &posted, &aside).await {
             Ok(()) => notice_to("/admin/options-theme.php", "外观设置已经保存"),
             Err(msg) => error_to("/admin/themes.php", msg),
         };
