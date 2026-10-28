@@ -712,7 +712,7 @@ fn shell(
 /// 侧栏分组文案（对齐参照站 i18n 实测）：
 /// zh（zh-CN / zh-HK / zh-TW …）→ 首页/分类/页面/友链；其余 → Home/Categories/Pages/Links。
 /// 优先级：Accept-Language 主语言；无头或解析不出 → 英文（与参照站 en 实测一致）。
-/// 自定义页面标题（时间线、nCoV 等）走数据源原标题，不在这里硬翻。
+/// 自定义页面标题走数据源原标题，不在这里硬翻。
 pub fn nav_labels(accept_language: Option<&str>) -> Value {
     let zh = accept_language
         .and_then(|h| h.split(',').next())
